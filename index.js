@@ -15,6 +15,12 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true
 }));
+// Explicitly handle preflight requests for all routes
+app.options('*', cors({
+  origin: ['https://sureboda.com', 'https://www.sureboda.com'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true
+}));
 app.use(express.json());
 
 // M-Pesa API routes
