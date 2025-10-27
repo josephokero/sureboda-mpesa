@@ -10,7 +10,11 @@ const mpesaCallbackRoutes = require('./mpesaCallback');
 const app = express();
 
 
-app.use(cors());
+app.use(cors({
+  origin: ['https://sureboda.com', 'https://www.sureboda.com'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true
+}));
 app.use(express.json());
 
 // M-Pesa API routes
