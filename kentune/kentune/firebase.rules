@@ -1,0 +1,63 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // DEV MODE: Allow all reads, writes, and queries for all documents (bypass index requirements)
+    match /{document=**} {
+      allow read, write, update, delete, list: if true;
+    }
+    // Allow users to create support tickets, and admins to read all
+    match /support_tickets/{ticketId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && request.auth.token.admin == true;
+    }
+    // Allow users to set their profile and submit tracks
+    match /profiles/{userId} {
+      allow read: if request.auth != null;
+      allow write, delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Allow users to create mastering requests, and admins to read all
+    match /mastering_requests/{requestId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && (request.auth.uid == resource.data.userId || request.auth.token.admin == true);
+      allow update, delete: if request.auth != null && (request.auth.uid == resource.data.userId || request.auth.token.admin == true);
+    }
+
+    // Allow users to create withdrawal requests, and admins to read all
+    match /withdrawal_requests/{userId} {
+      allow create, update, delete: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && (request.auth.uid == userId || request.auth.token.admin == true);
+    }
+    // Allow artists to read their own analytics, and admins to read/write all
+    match /analytics/{docId} {
+      allow read: if request.auth != null && (
+        request.auth.token.admin == true ||
+        get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin' ||
+        resource.data.artistId == request.auth.uid
+      );
+      allow write: if request.auth != null && (
+        request.auth.token.admin == true ||
+        get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+    match /tracks/{trackId} {
+      // Allow users to create and update their own tracks
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow read: if true;
+    }
+    // Allow users to create and update their own music releases
+    match /music_releases/{releaseId} {
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow read: if true;
+    }
+  // (Removed duplicate match /tracks/{trackId} block)
+    // Allow admin to download tracks (assuming a field or subcollection for files)
+    match /tracks/{trackId}/files/{fileId} {
+      allow read: if request.auth != null && (resource.data.userId == request.auth.uid || request.auth.token.admin == true);
+      allow delete: if request.auth != null && request.auth.token.admin == true;
+    }
+  }
+}

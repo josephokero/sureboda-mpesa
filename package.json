@@ -1,28 +1,19 @@
 {
-  "name": "surebodaweb",
+  "name": "surebodaweb-server",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "cd client && npm install && npm run build"
+    "start": "node index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
-    "@emotion/react": "^11.14.0",
-    "@emotion/styled": "^11.14.1",
-    "@mui/icons-material": "^7.3.4",
-    "@mui/material": "^7.3.4",
-    "axios": "^1.12.2",
-    "bcryptjs": "^3.0.2",
+    "axios": "^1.6.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
-    "express": "^5.1.0",
-    "firebase": "^12.4.0",
-    "firebase-admin": "^13.5.0",
-    "jsonwebtoken": "^9.0.2",
-    "mongoose": "^8.19.2"
+    "express": "^4.18.2",
+    "firebase-admin": "^11.10.1",
+    "node-fetch": "^3.3.2"
   }
 }
