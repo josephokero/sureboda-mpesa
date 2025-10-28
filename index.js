@@ -164,14 +164,14 @@ app.post('/api/mpesa/callback', (req, res) => {
   const callback = req.body.Body?.stkCallback;
   let status = 'pending';
   let checkoutId = null;
+  let userId = 'unknownUser';
   if (callback) {
-  console.log('Raw callback:', JSON.stringify(callback, null, 2));
+    console.log('Raw callback:', JSON.stringify(callback, null, 2));
     checkoutId = callback.CheckoutRequestID;
+    userId = callback.AccountReference || 'unknownUser';
     console.log('Callback CheckoutRequestID:', checkoutId);
     console.log('Callback ResultCode:', callback.ResultCode);
     console.log('Callback ResultDesc:', callback.ResultDesc);
-    // Extract userId from AccountReference
-    const userId = callback.AccountReference || 'unknownUser';
     if (callback.ResultCode === 0) {
       status = 'paid';
       console.log('PAYMENT SUCCESSFUL for CheckoutRequestID:', checkoutId);
@@ -179,7 +179,7 @@ app.post('/api/mpesa/callback', (req, res) => {
       status = 'failed';
       console.log('PAYMENT FAILED/DECLINED for CheckoutRequestID:', checkoutId);
     }
-    if (firestore && userId !== 'unknownUser' && checkoutId) {
+    if (firestore && checkoutId) {
       const transactionData = {
         checkoutId,
         userId,
@@ -197,12 +197,12 @@ app.post('/api/mpesa/callback', (req, res) => {
         .then(() => console.log('Transaction status saved to Firestore with checkoutId as docId'))
         .catch(e => console.error('Error saving transaction to Firestore:', e));
     } else {
-      console.error('Firestore, userId, or checkoutId missing. Not saving transaction.');
+      console.error('Firestore or checkoutId missing. Not saving transaction.');
     }
   } else {
     console.log('No valid callback found in body.');
   }
-  res.status(200).json({ success: true, status, checkoutId, message: callback?.ResultDesc || 'Callback received.' });
+  res.status(200).json({ success: true, status, checkoutId, userId, message: callback?.ResultDesc || 'Callback received.' });
 });
 
 // Payment status endpoint
