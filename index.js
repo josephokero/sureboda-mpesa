@@ -115,6 +115,11 @@ app.post('/api/mpesa/stk-push', async (req, res) => {
         }
       });
       console.log('STK Push response:', stkRes.data);
+      // Save mapping of CheckoutRequestID to userId for later lookup in callback
+      if (firestore && stkRes.data.CheckoutRequestID && userId) {
+        await firestore.collection('mpesa-checkouts').doc(stkRes.data.CheckoutRequestID).set({ userId, phone: phone_number, amount, timestamp: new Date().toISOString() }, { merge: true });
+        console.log('Saved CheckoutRequestID to userId mapping:', stkRes.data.CheckoutRequestID, userId);
+      }
       res.status(200).json({
         success: true,
         message: stkRes.data.CustomerMessage || 'STK Push request sent. Check your phone to complete payment.',
@@ -169,35 +174,51 @@ app.post('/api/mpesa/callback', (req, res) => {
     console.log('Raw callback:', JSON.stringify(callback, null, 2));
     checkoutId = callback.CheckoutRequestID;
     userId = callback.AccountReference || 'unknownUser';
-    console.log('Callback CheckoutRequestID:', checkoutId);
-    console.log('Callback ResultCode:', callback.ResultCode);
-    console.log('Callback ResultDesc:', callback.ResultDesc);
+    // If userId is unknown, look up from mpesa-checkouts mapping
+    const setTransaction = (finalUserId) => {
+      if (firestore && checkoutId) {
+        const transactionData = {
+          checkoutId,
+          userId: finalUserId,
+          resultCode: callback.ResultCode,
+          resultDesc: callback.ResultDesc,
+          amount: callback.CallbackMetadata?.Item?.find(i => i.Name === 'Amount')?.Value || null,
+          mpesaReceiptNumber: callback.CallbackMetadata?.Item?.find(i => i.Name === 'MpesaReceiptNumber')?.Value || null,
+          phoneNumber: callback.CallbackMetadata?.Item?.find(i => i.Name === 'PhoneNumber')?.Value || null,
+          status,
+          timestamp: new Date().toISOString(),
+          raw: callback
+        };
+        firestore.collection('payroll').doc(finalUserId).collection('transactions').doc(checkoutId).set(transactionData, { merge: true })
+          .then(() => console.log('Transaction status saved to Firestore with checkoutId as docId'))
+          .catch(e => console.error('Error saving transaction to Firestore:', e));
+      } else {
+        console.error('Firestore or checkoutId missing. Not saving transaction.');
+      }
+    };
+    if (userId === 'unknownUser' && firestore && checkoutId) {
+      firestore.collection('mpesa-checkouts').doc(checkoutId).get()
+        .then(doc => {
+          if (doc.exists && doc.data().userId) {
+            userId = doc.data().userId;
+            setTransaction(userId);
+          } else {
+            setTransaction('unknownUser');
+          }
+        })
+        .catch(e => {
+          console.error('Error looking up userId from mpesa-checkouts:', e);
+          setTransaction('unknownUser');
+        });
+    } else {
+      setTransaction(userId);
+    }
     if (callback.ResultCode === 0) {
       status = 'paid';
       console.log('PAYMENT SUCCESSFUL for CheckoutRequestID:', checkoutId);
     } else {
       status = 'failed';
       console.log('PAYMENT FAILED/DECLINED for CheckoutRequestID:', checkoutId);
-    }
-    if (firestore && checkoutId) {
-      const transactionData = {
-        checkoutId,
-        userId,
-        resultCode: callback.ResultCode,
-        resultDesc: callback.ResultDesc,
-        amount: callback.CallbackMetadata?.Item?.find(i => i.Name === 'Amount')?.Value || null,
-        mpesaReceiptNumber: callback.CallbackMetadata?.Item?.find(i => i.Name === 'MpesaReceiptNumber')?.Value || null,
-        phoneNumber: callback.CallbackMetadata?.Item?.find(i => i.Name === 'PhoneNumber')?.Value || null,
-        status,
-        timestamp: new Date().toISOString(),
-        raw: callback
-      };
-      // Always save with checkoutId as docId for easy lookup, overwrite if exists
-      firestore.collection('payroll').doc(userId).collection('transactions').doc(checkoutId).set(transactionData, { merge: true })
-        .then(() => console.log('Transaction status saved to Firestore with checkoutId as docId'))
-        .catch(e => console.error('Error saving transaction to Firestore:', e));
-    } else {
-      console.error('Firestore or checkoutId missing. Not saving transaction.');
     }
   } else {
     console.log('No valid callback found in body.');
