@@ -16,8 +16,8 @@ const axios = require('axios');
 const express = require('express');
 const cors = require('cors');
 
-const mpesaRoutes = require('./mpesa');
-const mpesaCallbackRoutes = require('./mpesaCallback');
+
+
 
 const app = express();
 
@@ -49,7 +49,10 @@ app.get('/', (req, res) => {
 // MPesa STK Push endpoint
 app.post('/api/mpesa/stk-push', async (req, res) => {
   let { phone_number, amount, narrative, userId } = req.body;
+  console.log('--- Payment Initiated ---');
+  console.log('Received payment request:', { phone_number, amount, narrative, userId });
   if (!phone_number || !amount) {
+    console.error('Missing phone number or amount');
     return res.status(400).json({ error: 'Phone number and amount are required.' });
   }
   // Normalize phone number to 2547xxxxxxxx or 2541xxxxxxxx
@@ -61,9 +64,11 @@ app.post('/api/mpesa/stk-push', async (req, res) => {
   }
   // Optionally, validate format
   if (!/^254(7|1)\d{8}$/.test(phone_number)) {
+    console.error('Invalid phone number format:', phone_number);
     return res.status(400).json({ error: 'Invalid phone number format. Use 07xxxxxxxx or 01xxxxxxxx.' });
   }
   try {
+    console.log('Requesting MPesa access token...');
     // Step 1: Get access token
     const auth = Buffer.from(`${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`).toString('base64');
     const tokenRes = await axios.get('https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials', {
@@ -72,6 +77,7 @@ app.post('/api/mpesa/stk-push', async (req, res) => {
       }
     });
     const access_token = tokenRes.data.access_token;
+    console.log('Received MPesa access token');
 
     // Step 2: Prepare STK Push payload
     const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
@@ -92,17 +98,19 @@ app.post('/api/mpesa/stk-push', async (req, res) => {
       AccountReference: userId, // Pass userId for callback
       TransactionDesc: narrative || 'Daily Payment'
     };
-    // Debug log for payload
-    console.log('STK Push Payload:', payload);
+  // Debug log for payload
+  console.log('STK Push Payload:', payload);
 
     // Step 3: Send STK Push request
     try {
+      console.log('Sending STK Push request to Safaricom...');
       const stkRes = await axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', payload, {
         headers: {
           Authorization: `Bearer ${access_token}`,
           'Content-Type': 'application/json'
         }
       });
+      console.log('STK Push response:', stkRes.data);
       res.status(200).json({
         success: true,
         message: stkRes.data.CustomerMessage || 'STK Push request sent. Check your phone to complete payment.',
@@ -110,6 +118,7 @@ app.post('/api/mpesa/stk-push', async (req, res) => {
       });
     } catch (stkErr) {
       // Improved error reporting
+      console.error('STK Push error:', stkErr);
       let errorMsg = stkErr.message;
       if (stkErr.response && stkErr.response.data) {
         if (typeof stkErr.response.data === 'string') {
@@ -125,6 +134,7 @@ app.post('/api/mpesa/stk-push', async (req, res) => {
       });
     }
   } catch (err) {
+    console.error('MPesa STK Push endpoint error:', err);
     let errorMsg = err.message;
     if (err.response && err.response.data) {
       if (typeof err.response.data === 'string') {
@@ -141,9 +151,7 @@ app.post('/api/mpesa/stk-push', async (req, res) => {
   }
 });
 
-// MPesa callback endpoint
-let paymentStatusStore = global.paymentStatusStore || {};
-global.paymentStatusStore = paymentStatusStore;
+
 
 app.post('/api/mpesa/callback', (req, res) => {
   console.log('==============================');
@@ -210,9 +218,6 @@ app.get('/api/mpesa/payment-status', (req, res) => {
     });
 });
 
-// Payment confirmations endpoint
-app.get('/api/mpesa/payment-confirmations', (req, res) => {
-  res.status(200).json({ success: true, payments: paymentStatusStore });
-});
+
 
 module.exports = app;
