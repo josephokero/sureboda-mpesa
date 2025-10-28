@@ -1,3 +1,23 @@
+/* Custom vertical scrollbar: light blue with a bit of red at the bottom */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #6ec6ff #181c22;
+}
+
+body::-webkit-scrollbar {
+  width: 12px;
+}
+body::-webkit-scrollbar-track {
+  background: #181c22;
+}
+body::-webkit-scrollbar-thumb {
+  background: linear-gradient(to bottom, #6ec6ff 80%, #ff1744 100%);
+  border-radius: 8px;
+  min-height: 40px;
+}
+body::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(to bottom, #40a9ff 70%, #ff1744 100%);
+}
 .App {
   text-align: center;
 }

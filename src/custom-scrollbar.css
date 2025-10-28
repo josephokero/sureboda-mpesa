@@ -1,0 +1,16 @@
+/* Custom blue scrollbar for SureBoda */
+html, body {
+  scrollbar-width: thin;
+  scrollbar-color: #00aaff #10111a;
+}
+html::-webkit-scrollbar, body::-webkit-scrollbar {
+  width: 10px;
+  background: #10111a;
+}
+html::-webkit-scrollbar-thumb, body::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #00aaff 0%, #0077b6 100%);
+  border-radius: 8px;
+}
+html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #00c6fb 0%, #00aaff 100%);
+}
