@@ -165,6 +165,7 @@ app.post('/api/mpesa/callback', (req, res) => {
   let status = 'pending';
   let checkoutId = null;
   if (callback) {
+  console.log('Raw callback:', JSON.stringify(callback, null, 2));
     checkoutId = callback.CheckoutRequestID;
     console.log('Callback CheckoutRequestID:', checkoutId);
     console.log('Callback ResultCode:', callback.ResultCode);
