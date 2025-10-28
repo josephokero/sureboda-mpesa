@@ -74,9 +74,18 @@ app.post('/api/mpesa/stk-push', async (req, res) => {
       data: stkRes.data
     });
   } catch (err) {
+    // Try to extract a readable error message
+    let errorMsg = err.message;
+    if (err.response && err.response.data) {
+      if (typeof err.response.data === 'string') {
+        errorMsg = err.response.data;
+      } else if (typeof err.response.data === 'object') {
+        errorMsg = err.response.data.errorMessage || JSON.stringify(err.response.data);
+      }
+    }
     res.status(500).json({
       success: false,
-      error: err.response?.data || err.message,
+      error: errorMsg,
       message: 'Failed to initiate MPesa payment. Please try again or contact support.'
     });
   }
