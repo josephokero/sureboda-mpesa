@@ -81,6 +81,7 @@ const Payments = () => {
   const [mpesaSnackbar, setMpesaSnackbar] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [confirmationMessage, setConfirmationMessage] = useState('');
 
   const todayPaid = transactions.some((tx) => {
     if (!tx.date || !tx.date.seconds) return false;
@@ -179,6 +180,7 @@ const Payments = () => {
     }
     try {
       setIsProcessing(true);
+      setConfirmationMessage('');
       setMpesaStatus('Processing payment...');
       setMpesaSnackbar(false);
       console.debug('Sending M-Pesa payment', { amount, phone, userId: user?.uid });
@@ -205,13 +207,14 @@ const Payments = () => {
         // Poll for payment confirmation using backend status endpoint
         const confirmed = await pollPaymentStatus(checkoutId, user.uid);
         if (confirmed) {
-          setMpesaStatus('Payment successful! Thanks for being a SureBoda rider.');
+          setConfirmationMessage('✅ Payment received! Transaction has been added to your account.');
           setPaymentSuccess(true);
           setTimeout(() => {
             setPaymentSuccess(false);
             setModalOpen(false);
+            setConfirmationMessage('');
             setMpesaStatus('');
-          }, 2000);
+          }, 2500);
           setPaymentAmount('');
         } else {
           setMpesaStatus('Payment not confirmed. Please check your M-Pesa app.');
@@ -227,6 +230,7 @@ const Payments = () => {
       setMpesaStatus('Payment failed. Please try again.');
       setMpesaSnackbar(true);
       setIsProcessing(false);
+      setConfirmationMessage('');
       console.error('M-Pesa payment error', error);
     }
   };
@@ -404,13 +408,15 @@ const Payments = () => {
           <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#43e97b', textAlign: 'center', fontSize: 24 }}>Make a Payment</Typography>
           {isProcessing && (
             <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mb: 2 }}>
-              <CircularProgress color="success" size={36} sx={{ mb: 1 }} />
-              <Typography sx={{ color: '#43e97b', fontWeight: 700 }}>Processing payment...</Typography>
+              <CircularProgress color="success" size={48} sx={{ mb: 2 }} />
+              <Typography sx={{ color: '#43e97b', fontWeight: 700, fontSize: 18 }}>Waiting for payment confirmation...</Typography>
+              <Typography sx={{ color: '#ccc', fontSize: 14, mt: 1 }}>Please complete the payment on your phone.</Typography>
             </Box>
           )}
           {paymentSuccess && (
-            <Alert severity="success" sx={{ mb: 2, fontWeight: 700, background: '#43e97b', color: '#fff' }}>
-              Payment successful! Thanks for being a SureBoda rider.
+            <Alert severity="success" sx={{ mb: 2, fontWeight: 700, background: '#43e97b', color: '#fff', fontSize: 18 }}>
+              {confirmationMessage || 'Payment successful!'}<br />
+              <span style={{ fontWeight: 400, fontSize: 15 }}>Confirmed: Payment received and transaction added to Firebase.</span>
             </Alert>
           )}
           {(() => {
