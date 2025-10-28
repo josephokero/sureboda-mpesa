@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { Box, Paper, Typography, CircularProgress, Alert, Rating, Button, useTheme } from '@mui/material';
+import { Box, Paper, Typography, CircularProgress, Alert, Rating, Button } from '@mui/material';
 import { motion } from 'framer-motion';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import { db } from '../../firestore';
@@ -30,7 +30,7 @@ const StatCard = ({ title, value, icon, highlight = false }: { title: string, va
 );
 
 const Overview = () => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | null>(null); // user is set but not used, but required for auth
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stats, setStats] = useState<any>({});
@@ -84,7 +84,6 @@ const Overview = () => {
   }, []);
 
 
-  const theme = useTheme();
   // Quick actions (example: go to payments, request service, etc.)
   const quickActions = [
     { label: 'Make Payment', color: 'primary', href: '/dashboard/payments' },

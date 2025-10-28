@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Box, Paper, Typography, List, ListItem, ListItemText, IconButton } from '@mui/material';
+import { Paper, Typography, List, ListItem, ListItemText, IconButton } from '@mui/material';
 import { motion } from 'framer-motion';
 import { CloudDownload as CloudDownloadIcon } from '@mui/icons-material';
 

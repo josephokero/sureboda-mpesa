@@ -1,12 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Paper, Typography, List, ListItem, ListItemText, Divider, Button, Alert, CircularProgress, Modal, TextField, Card, CardContent, Stack, Chip, Snackbar } from '@mui/material';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Box, Paper, Typography, List, ListItem, ListItemText, Divider, Button, Alert, CircularProgress, Modal, TextField, Card, CardContent, Snackbar } from '@mui/material';
+import { motion } from 'framer-motion';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import { db } from '../../firestore';
-import { doc, onSnapshot, updateDoc, collection, addDoc, query, orderBy, onSnapshot as onSubSnapshot, serverTimestamp, getDocs } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, orderBy, onSnapshot as onSubSnapshot } from 'firebase/firestore';
 import { formatKES, isCriticalOverdue } from '../../utils/paymentUtils';
 import LinearProgress from '@mui/material/LinearProgress';
-import PaymentIcon from '@mui/icons-material/Payment';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import TodayIcon from '@mui/icons-material/Today';
 import NotificationImportantIcon from '@mui/icons-material/NotificationImportant';
@@ -83,16 +82,6 @@ const Payments = () => {
   const [paymentSuccess, setPaymentSuccess] = useState(false);
   const [confirmationMessage, setConfirmationMessage] = useState('');
 
-  const todayPaid = transactions.some((tx) => {
-    if (!tx.date || !tx.date.seconds) return false;
-    const txDate = new Date(tx.date.seconds * 1000);
-    const today = new Date();
-    return (
-      txDate.getDate() === today.getDate() &&
-      txDate.getMonth() === today.getMonth() &&
-      txDate.getFullYear() === today.getFullYear()
-    );
-  });
 
   useEffect(() => {
     const auth = getAuth();
