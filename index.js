@@ -162,30 +162,27 @@ app.post('/api/mpesa/callback', (req, res) => {
     if (callback.ResultCode === 0) {
       status = 'paid';
       console.log('PAYMENT SUCCESSFUL for CheckoutRequestID:', checkoutId);
-      // --- Save transaction to Firestore ---
-      if (firestore && userId !== 'unknownUser') {
-        const transactionData = {
-          checkoutId,
-          userId,
-          resultCode: callback.ResultCode,
-          resultDesc: callback.ResultDesc,
-          amount: callback.CallbackMetadata?.Item?.find(i => i.Name === 'Amount')?.Value || null,
-          mpesaReceiptNumber: callback.CallbackMetadata?.Item?.find(i => i.Name === 'MpesaReceiptNumber')?.Value || null,
-          phoneNumber: callback.CallbackMetadata?.Item?.find(i => i.Name === 'PhoneNumber')?.Value || null,
-          timestamp: new Date().toISOString(),
-          raw: callback
-        };
-        firestore.collection('payroll').doc(userId).collection('transactions').add(transactionData)
-          .then(() => console.log('Transaction saved to Firestore'))
-          .catch(e => console.error('Error saving transaction to Firestore:', e));
-      }
     } else {
       status = 'failed';
       console.log('PAYMENT FAILED/DECLINED for CheckoutRequestID:', checkoutId);
     }
-    if (checkoutId) {
-      paymentStatusStore[checkoutId] = status;
-      console.log('Updated paymentStatusStore:', paymentStatusStore);
+    if (firestore && userId !== 'unknownUser' && checkoutId) {
+      const transactionData = {
+        checkoutId,
+        userId,
+        resultCode: callback.ResultCode,
+        resultDesc: callback.ResultDesc,
+        amount: callback.CallbackMetadata?.Item?.find(i => i.Name === 'Amount')?.Value || null,
+        mpesaReceiptNumber: callback.CallbackMetadata?.Item?.find(i => i.Name === 'MpesaReceiptNumber')?.Value || null,
+        phoneNumber: callback.CallbackMetadata?.Item?.find(i => i.Name === 'PhoneNumber')?.Value || null,
+        status,
+        timestamp: new Date().toISOString(),
+        raw: callback
+      };
+      // Save with checkoutId as docId for easy lookup
+      firestore.collection('payroll').doc(userId).collection('transactions').doc(checkoutId).set(transactionData)
+        .then(() => console.log('Transaction status saved to Firestore'))
+        .catch(e => console.error('Error saving transaction to Firestore:', e));
     }
   } else {
     console.log('No valid callback found in body.');
@@ -195,9 +192,22 @@ app.post('/api/mpesa/callback', (req, res) => {
 
 // Payment status endpoint
 app.get('/api/mpesa/payment-status', (req, res) => {
-  const { checkoutId } = req.query;
-  const status = paymentStatusStore[checkoutId] || 'pending';
-  res.status(200).json({ success: true, status });
+  const { checkoutId, userId } = req.query;
+  if (!firestore || !checkoutId || !userId) {
+    return res.status(400).json({ success: false, error: 'Missing userId or checkoutId' });
+  }
+  firestore.collection('payroll').doc(userId).collection('transactions').doc(checkoutId).get()
+    .then(doc => {
+      if (doc.exists) {
+        const data = doc.data();
+        res.status(200).json({ success: true, status: data.status, transaction: data });
+      } else {
+        res.status(200).json({ success: true, status: 'pending' });
+      }
+    })
+    .catch(e => {
+      res.status(500).json({ success: false, error: 'Error fetching status', details: e.message });
+    });
 });
 
 // Payment confirmations endpoint
