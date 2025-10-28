@@ -40,41 +40,67 @@ app.post('/api/mpesa/stk-push', async (req, res) => {
     return res.status(400).json({ error: 'Phone number and amount are required.' });
   }
   try {
+    // Step 1: Get access token
     const auth = Buffer.from(`${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`).toString('base64');
     const tokenRes = await axios.get('https://api.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials', {
-      headers: { Authorization: `Basic ${auth}` }
+      headers: {
+        Authorization: `Basic ${auth}`
+      }
     });
     const access_token = tokenRes.data.access_token;
+
+    // Step 2: Prepare STK Push payload
     const timestamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
     const password = Buffer.from(
       process.env.MPESA_SHORTCODE + process.env.MPESA_PASSKEY + timestamp
     ).toString('base64');
+
     const payload = {
-      BusinessShortCode: process.env.MPESA_SHORTCODE,
+      BusinessShortCode: process.env.MPESA_SHORTCODE, // 8499486
       Password: password,
       Timestamp: timestamp,
       TransactionType: 'CustomerBuyGoodsOnline',
       Amount: amount,
       PartyA: phone_number,
-      PartyB: process.env.MPESA_TILL_NUMBER,
+      PartyB: process.env.MPESA_TILL_NUMBER, // 6955822
       PhoneNumber: phone_number,
-      CallBackURL: process.env.MPESA_CALLBACK_URL,
-      AccountReference: narrative || 'SureBoda Payment',
-      TransactionDesc: narrative || 'SureBoda Payment'
+      CallBackURL: process.env.MPESA_CALLBACK_URL, // https://sureboda-mpesa.vercel.app/api/mpesa/callback
+      AccountReference: narrative || 'ASTUTEPROMUSIC',
+      TransactionDesc: narrative || 'Daily Payment'
     };
-    const stkRes = await axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', payload, {
-      headers: {
-        Authorization: `Bearer ${access_token}`,
-        'Content-Type': 'application/json'
+    // Debug log for payload
+    console.log('STK Push Payload:', payload);
+
+    // Step 3: Send STK Push request
+    try {
+      const stkRes = await axios.post('https://api.safaricom.co.ke/mpesa/stkpush/v1/processrequest', payload, {
+        headers: {
+          Authorization: `Bearer ${access_token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      res.status(200).json({
+        success: true,
+        message: stkRes.data.CustomerMessage || 'STK Push request sent. Check your phone to complete payment.',
+        data: stkRes.data
+      });
+    } catch (stkErr) {
+      // Improved error reporting
+      let errorMsg = stkErr.message;
+      if (stkErr.response && stkErr.response.data) {
+        if (typeof stkErr.response.data === 'string') {
+          errorMsg = stkErr.response.data;
+        } else if (typeof stkErr.response.data === 'object') {
+          errorMsg = stkErr.response.data.errorMessage || JSON.stringify(stkErr.response.data);
+        }
       }
-    });
-    res.status(200).json({
-      success: true,
-      message: stkRes.data.CustomerMessage || 'STK Push request sent. Check your phone to complete payment.',
-      data: stkRes.data
-    });
+      res.status(500).json({
+        success: false,
+        error: errorMsg,
+        message: 'Failed to initiate MPesa payment. Please try again or contact support.'
+      });
+    }
   } catch (err) {
-    // Try to extract a readable error message
     let errorMsg = err.message;
     if (err.response && err.response.data) {
       if (typeof err.response.data === 'string') {
@@ -86,7 +112,7 @@ app.post('/api/mpesa/stk-push', async (req, res) => {
     res.status(500).json({
       success: false,
       error: errorMsg,
-      message: 'Failed to initiate MPesa payment. Please try again or contact support.'
+      message: 'MPesa API error. Please try again or contact support.'
     });
   }
 });
