@@ -135,17 +135,24 @@ const Payments = () => {
     return () => unsubscribe();
   }, []);
 
-  // Poll for payment confirmation
-  const pollPaymentStatus = async (phone: string, initialTxCount: number) => {
+  // Poll for payment confirmation using backend status endpoint
+  const pollPaymentStatus = async (checkoutId: string, userId: string) => {
     let attempts = 0;
+    const apiBase = process.env.NODE_ENV === 'development'
+      ? 'http://localhost:5000'
+      : 'https://sureboda-mpesa.vercel.app';
     while (attempts < 12) { // Poll for up to 1 minute (12 x 5s)
       await new Promise(res => setTimeout(res, 5000));
-      // Fetch latest transactions
-      const transactionsRef = collection(db, 'payroll', user?.uid || '', 'transactions');
-      const q = query(transactionsRef, orderBy('date', 'desc'));
-      const querySnapshot = await getDocs(q);
-      if (querySnapshot.size > initialTxCount) {
-        return true;
+      try {
+        const res = await fetch(`${apiBase}/api/mpesa/payment-status?checkoutId=${encodeURIComponent(checkoutId)}&userId=${encodeURIComponent(userId)}`);
+        const data = await res.json();
+        if (data.status === 'success') {
+          return true;
+        } else if (data.status === 'failed') {
+          return false;
+        }
+      } catch (err) {
+        // Ignore errors and continue polling
       }
       attempts++;
     }
@@ -175,17 +182,14 @@ const Payments = () => {
       setMpesaStatus('Processing payment...');
       setMpesaSnackbar(false);
       console.debug('Sending M-Pesa payment', { amount, phone, userId: user?.uid });
-  const apiBase = process.env.NODE_ENV === 'development' ? 'http://localhost:5000' : 'https://sureboda-mpesa.herokuapp.com';
-      // Get current transaction count
-      const transactionsRef = collection(db, 'payroll', user?.uid || '', 'transactions');
-      const q = query(transactionsRef, orderBy('date', 'desc'));
-      const querySnapshot = await getDocs(q);
-      const initialTxCount = querySnapshot.size;
-      // Send STK push, now with userId
-      const res = await fetch(`${apiBase}/api/mpesa/stkpush`, {
+      const apiBase = process.env.NODE_ENV === 'development'
+        ? 'http://localhost:5000'
+        : 'https://sureboda-mpesa.vercel.app';
+      // Send STK push to Vercel backend
+      const res = await fetch(`${apiBase}/api/mpesa/stk-push`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, phone, userId: user?.uid })
+        body: JSON.stringify({ phone_number: phone, amount, userId: user?.uid })
       });
       const data = await res.json();
       console.debug('M-Pesa STK Push response', data);
@@ -193,11 +197,11 @@ const Payments = () => {
         setMpesaStatus('M-Pesa payment failed: ' + data.error);
         setMpesaSnackbar(true);
         setIsProcessing(false);
-      } else {
+      } else if (data.CheckoutRequestID && user?.uid) {
         setMpesaStatus('Prompt sent! Complete payment on your phone.');
         setMpesaSnackbar(true);
-        // Poll for payment confirmation
-        const confirmed = await pollPaymentStatus(phone, initialTxCount);
+        // Poll for payment confirmation using backend status endpoint
+        const confirmed = await pollPaymentStatus(data.CheckoutRequestID, user.uid);
         if (confirmed) {
           setMpesaStatus('Payment successful! Thanks for being a SureBoda rider.');
           setPaymentSuccess(true);
@@ -210,6 +214,10 @@ const Payments = () => {
           setMpesaStatus('Payment not confirmed. Please check your M-Pesa app.');
           setMpesaSnackbar(true);
         }
+        setIsProcessing(false);
+      } else {
+        setMpesaStatus('Unexpected error. Please try again.');
+        setMpesaSnackbar(true);
         setIsProcessing(false);
       }
     } catch (error) {
