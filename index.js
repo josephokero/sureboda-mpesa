@@ -35,9 +35,20 @@ app.get('/', (req, res) => {
 
 // MPesa STK Push endpoint
 app.post('/api/mpesa/stk-push', async (req, res) => {
-  const { phone_number, amount, narrative } = req.body;
+  let { phone_number, amount, narrative } = req.body;
   if (!phone_number || !amount) {
     return res.status(400).json({ error: 'Phone number and amount are required.' });
+  }
+  // Normalize phone number to 2547xxxxxxxx or 2541xxxxxxxx
+  phone_number = phone_number.trim();
+  if (phone_number.startsWith('07') && phone_number.length === 10) {
+    phone_number = '254' + phone_number.slice(1);
+  } else if (phone_number.startsWith('01') && phone_number.length === 10) {
+    phone_number = '254' + phone_number.slice(1);
+  }
+  // Optionally, validate format
+  if (!/^254(7|1)\d{8}$/.test(phone_number)) {
+    return res.status(400).json({ error: 'Invalid phone number format. Use 07xxxxxxxx or 01xxxxxxxx.' });
   }
   try {
     // Step 1: Get access token
