@@ -21,6 +21,11 @@ async function getToken() {
   return res.data.access_token;
 }
 
+// Health check/status route
+router.get('/', (req, res) => {
+  res.send('MPesa backend is running');
+});
+
 // Initiate STK Push
 router.post('/stkpush', async (req, res) => {
   try {
