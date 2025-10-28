@@ -1,3 +1,6 @@
+# Ignore Google Cloud Service Account credentials
+astute-empire-83375ec8eabd.json
+astute-empire-firebase-adminsdk-fbsvc-21db64e36f.json
 # Dependencies
 /node_modules
 /client/node_modules
