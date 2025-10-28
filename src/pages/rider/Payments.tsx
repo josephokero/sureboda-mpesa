@@ -193,23 +193,42 @@ const Payments = () => {
       });
       const data = await res.json();
       console.debug('M-Pesa STK Push response', data);
+      // The backend returns CheckoutRequestID as data.data.CheckoutRequestID
+      const checkoutId = data?.data?.CheckoutRequestID;
       if (data.error) {
         setMpesaStatus('M-Pesa payment failed: ' + data.error);
         setMpesaSnackbar(true);
         setIsProcessing(false);
-      } else if (data.CheckoutRequestID && user?.uid) {
+      } else if (checkoutId && user?.uid) {
         setMpesaStatus('Prompt sent! Complete payment on your phone.');
         setMpesaSnackbar(true);
         // Poll for payment confirmation using backend status endpoint
-        const confirmed = await pollPaymentStatus(data.CheckoutRequestID, user.uid);
+        const confirmed = await pollPaymentStatus(checkoutId, user.uid);
         if (confirmed) {
           setMpesaStatus('Payment successful! Thanks for being a SureBoda rider.');
           setPaymentSuccess(true);
-          setTimeout(() => {
-            setPaymentSuccess(false);
-            setModalOpen(false);
-          }, 2500);
-          setPaymentAmount('');
+          // Show loading effect while saving to Firebase
+          setMpesaStatus('Saving payment to your account...');
+          // Save to Firebase after confirmation
+          try {
+            const transactionsRef = collection(db, 'payroll', user.uid, 'transactions');
+            await addDoc(transactionsRef, {
+              amount,
+              date: new Date(),
+              description: 'M-Pesa Payment',
+              type: 'credit',
+            });
+            setMpesaStatus('Payment saved!');
+            setTimeout(() => {
+              setPaymentSuccess(false);
+              setModalOpen(false);
+              setMpesaStatus('');
+            }, 2000);
+            setPaymentAmount('');
+          } catch (firebaseError) {
+            setMpesaStatus('Payment confirmed, but failed to save to account. Please contact support.');
+            setMpesaSnackbar(true);
+          }
         } else {
           setMpesaStatus('Payment not confirmed. Please check your M-Pesa app.');
           setMpesaSnackbar(true);
