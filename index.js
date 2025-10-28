@@ -1,3 +1,16 @@
+// --- Firebase Admin Setup ---
+const admin = require('firebase-admin');
+if (!admin.apps.length) {
+  try {
+    admin.initializeApp({
+      credential: admin.credential.applicationDefault(),
+    });
+    console.log('Firebase Admin initialized');
+  } catch (e) {
+    console.error('Firebase Admin init error:', e);
+  }
+}
+const firestore = admin.firestore ? admin.firestore() : null;
 require('dotenv').config();
 const axios = require('axios');
 const express = require('express');
@@ -35,7 +48,7 @@ app.get('/', (req, res) => {
 
 // MPesa STK Push endpoint
 app.post('/api/mpesa/stk-push', async (req, res) => {
-  let { phone_number, amount, narrative } = req.body;
+  let { phone_number, amount, narrative, userId } = req.body;
   if (!phone_number || !amount) {
     return res.status(400).json({ error: 'Phone number and amount are required.' });
   }
@@ -76,7 +89,7 @@ app.post('/api/mpesa/stk-push', async (req, res) => {
       PartyB: process.env.MPESA_TILL_NUMBER, // 6955822
       PhoneNumber: phone_number,
       CallBackURL: process.env.MPESA_CALLBACK_URL, // https://sureboda-mpesa.vercel.app/api/mpesa/callback
-      AccountReference: narrative || 'ASTUTEPROMUSIC',
+      AccountReference: userId, // Pass userId for callback
       TransactionDesc: narrative || 'Daily Payment'
     };
     // Debug log for payload
@@ -133,19 +146,49 @@ let paymentStatusStore = global.paymentStatusStore || {};
 global.paymentStatusStore = paymentStatusStore;
 
 app.post('/api/mpesa/callback', (req, res) => {
+  console.log('==============================');
+  console.log('MPESA CALLBACK EVENT RECEIVED');
+  console.log('Raw Body:', JSON.stringify(req.body, null, 2));
   const callback = req.body.Body?.stkCallback;
   let status = 'pending';
   let checkoutId = null;
   if (callback) {
     checkoutId = callback.CheckoutRequestID;
+    console.log('Callback CheckoutRequestID:', checkoutId);
+    console.log('Callback ResultCode:', callback.ResultCode);
+    console.log('Callback ResultDesc:', callback.ResultDesc);
+    // Extract userId from AccountReference
+    const userId = callback.AccountReference || 'unknownUser';
     if (callback.ResultCode === 0) {
       status = 'paid';
+      console.log('PAYMENT SUCCESSFUL for CheckoutRequestID:', checkoutId);
+      // --- Save transaction to Firestore ---
+      if (firestore && userId !== 'unknownUser') {
+        const transactionData = {
+          checkoutId,
+          userId,
+          resultCode: callback.ResultCode,
+          resultDesc: callback.ResultDesc,
+          amount: callback.CallbackMetadata?.Item?.find(i => i.Name === 'Amount')?.Value || null,
+          mpesaReceiptNumber: callback.CallbackMetadata?.Item?.find(i => i.Name === 'MpesaReceiptNumber')?.Value || null,
+          phoneNumber: callback.CallbackMetadata?.Item?.find(i => i.Name === 'PhoneNumber')?.Value || null,
+          timestamp: new Date().toISOString(),
+          raw: callback
+        };
+        firestore.collection('payroll').doc(userId).collection('transactions').add(transactionData)
+          .then(() => console.log('Transaction saved to Firestore'))
+          .catch(e => console.error('Error saving transaction to Firestore:', e));
+      }
     } else {
       status = 'failed';
+      console.log('PAYMENT FAILED/DECLINED for CheckoutRequestID:', checkoutId);
     }
     if (checkoutId) {
       paymentStatusStore[checkoutId] = status;
+      console.log('Updated paymentStatusStore:', paymentStatusStore);
     }
+  } else {
+    console.log('No valid callback found in body.');
   }
   res.status(200).json({ success: true, status, checkoutId, message: callback?.ResultDesc || 'Callback received.' });
 });
