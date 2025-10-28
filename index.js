@@ -187,10 +187,12 @@ app.post('/api/mpesa/callback', (req, res) => {
         timestamp: new Date().toISOString(),
         raw: callback
       };
-      // Save with checkoutId as docId for easy lookup
-      firestore.collection('payroll').doc(userId).collection('transactions').doc(checkoutId).set(transactionData)
-        .then(() => console.log('Transaction status saved to Firestore'))
+      // Always save with checkoutId as docId for easy lookup, overwrite if exists
+      firestore.collection('payroll').doc(userId).collection('transactions').doc(checkoutId).set(transactionData, { merge: true })
+        .then(() => console.log('Transaction status saved to Firestore with checkoutId as docId'))
         .catch(e => console.error('Error saving transaction to Firestore:', e));
+    } else {
+      console.error('Firestore, userId, or checkoutId missing. Not saving transaction.');
     }
   } else {
     console.log('No valid callback found in body.');
@@ -210,11 +212,14 @@ app.get('/api/mpesa/payment-status', (req, res) => {
         const data = doc.data();
         res.status(200).json({ success: true, status: data.status, transaction: data });
       } else {
+        // If not found, return pending instead of 500 error
         res.status(200).json({ success: true, status: 'pending' });
       }
     })
     .catch(e => {
-      res.status(500).json({ success: false, error: 'Error fetching status', details: e.message });
+      // Log error and return pending instead of 500
+      console.error('Error fetching payment status:', e);
+      res.status(200).json({ success: true, status: 'pending', error: e.message });
     });
 });
 
