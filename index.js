@@ -196,6 +196,15 @@ app.post('/api/mpesa/callback', (req, res) => {
         console.error('Firestore or checkoutId missing. Not saving transaction.');
       }
     };
+
+    if (callback.ResultCode === 0) {
+      status = 'paid';
+      console.log('PAYMENT SUCCESSFUL for CheckoutRequestID:', checkoutId);
+    } else {
+      status = 'failed';
+      console.log('PAYMENT FAILED/DECLINED for CheckoutRequestID:', checkoutId);
+    }
+
     if (userId === 'unknownUser' && firestore && checkoutId) {
       firestore.collection('mpesa-checkouts').doc(checkoutId).get()
         .then(doc => {
@@ -212,13 +221,6 @@ app.post('/api/mpesa/callback', (req, res) => {
         });
     } else {
       setTransaction(userId);
-    }
-    if (callback.ResultCode === 0) {
-      status = 'paid';
-      console.log('PAYMENT SUCCESSFUL for CheckoutRequestID:', checkoutId);
-    } else {
-      status = 'failed';
-      console.log('PAYMENT FAILED/DECLINED for CheckoutRequestID:', checkoutId);
     }
   } else {
     console.log('No valid callback found in body.');
