@@ -136,7 +136,7 @@ const Payments = () => {
       try {
         const res = await fetch(`${apiBase}/api/mpesa/payment-status?checkoutId=${encodeURIComponent(checkoutId)}&userId=${encodeURIComponent(userId)}`);
         const data = await res.json();
-        if (data.status === 'success') {
+        if (data.status === 'paid') {
           return true;
         } else if (data.status === 'failed') {
           return false;
