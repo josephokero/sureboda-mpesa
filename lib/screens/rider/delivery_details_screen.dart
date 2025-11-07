@@ -4,6 +4,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 import '../../models/delivery_model.dart';
 import '../../models/user_model.dart';
@@ -111,6 +112,34 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
       ];
       _isLoadingRoute = false;
     });
+  }
+
+  Future<void> _makePhoneCall(String phoneNumber, String contactName) async {
+    final Uri phoneUri = Uri(scheme: 'tel', path: phoneNumber);
+    
+    try {
+      if (await canLaunchUrl(phoneUri)) {
+        await launchUrl(phoneUri);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Cannot make call to $contactName'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: Unable to call $phoneNumber'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -673,7 +702,40 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
                     ),
                   ),
                   IconButton(
-                    onPressed: () {},
+                    onPressed: () async {
+                      // Fetch business phone number from Firestore
+                      try {
+                        final businessDoc = await FirebaseFirestore.instance
+                            .collection('users')
+                            .doc(widget.delivery.businessId)
+                            .get();
+                        
+                        if (businessDoc.exists) {
+                          final businessPhone = businessDoc.data()?['phoneNumber'] as String?;
+                          if (businessPhone != null && businessPhone.isNotEmpty) {
+                            _makePhoneCall(businessPhone, widget.delivery.businessName);
+                          } else {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Business phone number not available'),
+                                  backgroundColor: Colors.orange,
+                                ),
+                              );
+                            }
+                          }
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
                     icon: Icon(Icons.phone, color: AppColors.accent, size: 24),
                     style: IconButton.styleFrom(
                       backgroundColor: AppColors.accent.withOpacity(0.2),
@@ -800,7 +862,12 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
                     ),
                   ),
                   IconButton(
-                    onPressed: () {},
+                    onPressed: () {
+                      _makePhoneCall(
+                        widget.delivery.recipientPhone,
+                        widget.delivery.recipientName,
+                      );
+                    },
                     icon: const Icon(Icons.phone, color: Colors.blue, size: 24),
                     style: IconButton.styleFrom(
                       backgroundColor: Colors.blue.withOpacity(0.2),
