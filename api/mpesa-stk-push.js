@@ -7,7 +7,7 @@
  * Updated: 2025-11-07
  */
 
-const axios = require('axios');
+import axios from 'axios';
 
 // M-Pesa Configuration (use Vercel Environment Variables in production)
 const MPESA_CONFIG = {
@@ -65,7 +65,7 @@ function generatePassword(timestamp) {
   return Buffer.from(str).toString('base64');
 }
 
-module.exports = async (req, res) => {
+export default async (req, res) => {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
