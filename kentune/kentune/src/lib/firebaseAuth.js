@@ -1,0 +1,16 @@
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth } from "firebase/auth";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyA4LX1FPdZ0c7GWeNUWr0U_EnXwjRNVu3c",
+  authDomain: "astute-pro-music-hub.firebaseapp.com",
+  projectId: "astute-pro-music-hub",
+  storageBucket: "astute-pro-music-hub.appspot.com",
+  messagingSenderId: "171987694193",
+  appId: "1:171987694193:web:0232fc3ff4d6efa791a1d0"
+};
+
+const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
+export { auth };
