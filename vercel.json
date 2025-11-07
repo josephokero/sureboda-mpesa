@@ -1,0 +1,22 @@
+{{
+
+  "functions": {  "version": 2,
+
+    "api/**/*.js": {  "builds": [
+
+      "runtime": "nodejs20.x"    {
+
+    }      "src": "api/**/*.js",
+
+  }      "use": "@vercel/node"
+
+}    }
+
+  ],
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    }
+  ]
+}
