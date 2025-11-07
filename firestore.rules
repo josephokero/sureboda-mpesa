@@ -1,6 +1,132 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Users collection
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      
+      allow create: if request.auth != null && 
+                      request.auth.uid == userId &&
+                      request.resource.data.role in ['business', 'rider'];
+      
+      allow update: if request.auth != null && 
+                      request.auth.uid == userId &&
+                      request.resource.data.role == resource.data.role;
+      
+      // Allow updating online status
+      allow update: if request.auth != null && 
+                      request.auth.uid == userId &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isOnline', 'lastSeen']);
+      
+      // Allow updating wallet balance (only increases)
+      allow update: if request.auth != null && 
+                      request.auth.uid == userId &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['walletBalance']) &&
+                      request.resource.data.walletBalance >= resource.data.walletBalance;
+      
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Deliveries collection
+    match /deliveries/{deliveryId} {
+      allow read: if request.auth != null;
+      
+      allow create: if request.auth != null &&
+                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'business' &&
+                      request.resource.data.businessId == request.auth.uid;
+      
+      allow update: if request.auth != null &&
+                      resource.data.businessId == request.auth.uid;
+      
+      allow update: if request.auth != null &&
+                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'rider' &&
+                      (resource.data.status == 'pending' || resource.data.riderId == request.auth.uid);
+      
+      allow delete: if request.auth != null &&
+                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      
+      // Chat messages subcollection
+      match /messages/{messageId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null && request.resource.data.senderId == request.auth.uid;
+        allow update: if request.auth != null && resource.data.senderId == request.auth.uid;
+        allow delete: if request.auth != null && resource.data.senderId == request.auth.uid;
+      }
+    }
+    
+    // Notifications collection
+    match /notifications/{notificationId} {
+      allow read: if request.auth != null &&
+                    (resource.data.userId == request.auth.uid || resource.data.riderId == request.auth.uid);
+      
+      allow create: if request.auth != null;
+      
+      allow update: if request.auth != null &&
+                      (resource.data.userId == request.auth.uid || resource.data.riderId == request.auth.uid) &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+      
+      allow delete: if request.auth != null &&
+                      (resource.data.userId == request.auth.uid || resource.data.riderId == request.auth.uid);
+    }
+    
+    // Transactions collection (M-Pesa payments)
+    match /transactions/{transactionId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      
+      allow create: if request.auth != null &&
+                      request.resource.data.userId == request.auth.uid &&
+                      request.resource.data.type == 'topup' &&
+                      request.resource.data.amount > 0;
+      
+      allow update: if request.auth != null && resource.data.userId == request.auth.uid;
+      
+      allow delete: if false;
+    }
+    
+    // Withdrawals collection
+    match /withdrawals/{withdrawalId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      
+      allow create: if request.auth != null &&
+                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'rider' &&
+                      request.resource.data.userId == request.auth.uid &&
+                      request.resource.data.status == 'pending';
+      
+      allow update: if request.auth != null &&
+                      get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+      
+      allow delete: if false;
+    }
+    
+    // Reviews collection
+    match /reviews/{reviewId} {
+      allow read: if request.auth != null;
+      
+      allow create: if request.auth != null &&
+                      request.resource.data.reviewerId == request.auth.uid;
+      
+      allow update: if request.auth != null &&
+                      resource.data.reviewerId == request.auth.uid;
+      
+      allow delete: if request.auth != null &&
+                      resource.data.reviewerId == request.auth.uid;
+    }
+    
+    // Analytics collection
+    match /analytics/{document=**} {
+      allow read, write: if request.auth != null &&
+                           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Settings collection
+    match /settings/{document=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null &&
+                     get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+  }
+}
     // Allow users to read/write their own user document
     // IMPORTANT: For the admin panel to read all users, you must have a rule here
     // that allows users with role 'admin' to read the entire collection.

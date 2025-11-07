@@ -68,12 +68,13 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
 
         await transactionRef.set({
           'userId': widget.user.uid,
-          'type': 'payment',
+          'type': 'topup',
           'amount': amount,
+          'phoneNumber': _phoneController.text,
+          'status': 'completed',
           'timestamp': FieldValue.serverTimestamp(),
-          'mpesaTransactionId': response['checkoutRequestId'],
+          'checkoutRequestId': response['checkoutRequestId'],
           'description': 'Wallet Top-Up',
-          'balanceAfter': widget.user.walletBalance + amount,
         });
 
         // Update user wallet balance
