@@ -186,8 +186,9 @@ exports.onDeliveryStatusChange = functions.firestore
   });
 
 /**
- * Get route between two points using OpenRouteService API
+ * Get route between two points using OSRM (Open Source Routing Machine)
  * This function acts as a proxy to bypass CORS issues on web
+ * OSRM is free and doesn't require API keys
  */
 exports.getRoute = functions.https.onRequest(async (req, res) => {
   // Enable CORS
@@ -203,22 +204,25 @@ exports.getRoute = functions.https.onRequest(async (req, res) => {
   try {
     const { startLat, startLng, endLat, endLng } = req.query;
 
+    console.log('Route request:', { startLat, startLng, endLat, endLng });
+
     if (!startLat || !startLng || !endLat || !endLng) {
       res.status(400).json({ error: 'Missing required parameters' });
       return;
     }
 
-    const apiUrl = `https://api.openrouteservice.org/v2/directions/driving-car?start=${startLng},${startLat}&end=${endLng},${endLat}`;
+    // Use OSRM public server - format: /route/v1/driving/lon,lat;lon,lat
+    const apiUrl = `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
+    
+    console.log('Calling OSRM:', apiUrl);
 
-    // Make request to OpenRouteService
-    const options = {
-      method: 'GET',
+    // Make request to OSRM
+    https.get(apiUrl, {
       headers: {
-        'Authorization': '5b3ce3597851110001cf6248a1c0d0c1e7c44e2ab3c3fa6c9e3c0c8a',
+        'Accept': 'application/json',
+        'User-Agent': 'Sureboda-App/1.0'
       },
-    };
-
-    https.get(apiUrl, options, (apiRes) => {
+    }, (apiRes) => {
       let data = '';
 
       apiRes.on('data', (chunk) => {
@@ -227,20 +231,48 @@ exports.getRoute = functions.https.onRequest(async (req, res) => {
 
       apiRes.on('end', () => {
         try {
+          console.log('OSRM response status:', apiRes.statusCode);
+          
           const routeData = JSON.parse(data);
-          res.status(200).json(routeData);
+          
+          if (routeData.code === 'Ok' && routeData.routes && routeData.routes.length > 0) {
+            const coordinates = routeData.routes[0].geometry.coordinates;
+            console.log('Route found with', coordinates.length, 'points');
+            
+            // Convert to GeoJSON format that matches OpenRouteService
+            const geoJson = {
+              type: 'FeatureCollection',
+              features: [{
+                type: 'Feature',
+                geometry: {
+                  type: 'LineString',
+                  coordinates: coordinates
+                },
+                properties: {
+                  distance: routeData.routes[0].distance,
+                  duration: routeData.routes[0].duration
+                }
+              }]
+            };
+            
+            res.status(200).json(geoJson);
+          } else {
+            console.error('No route found:', routeData);
+            res.status(404).json({ error: 'No route found', details: routeData });
+          }
         } catch (error) {
           console.error('Error parsing route data:', error);
-          res.status(500).json({ error: 'Failed to parse route data' });
+          console.error('Raw data:', data);
+          res.status(500).json({ error: 'Failed to parse route data', raw: data.substring(0, 500) });
         }
       });
     }).on('error', (error) => {
-      console.error('Error fetching route:', error);
-      res.status(500).json({ error: 'Failed to fetch route' });
+      console.error('Error fetching route from OSRM:', error);
+      res.status(500).json({ error: 'Failed to fetch route', details: error.message });
     });
 
   } catch (error) {
     console.error('Error in getRoute function:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
