@@ -1,15 +1,18 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "api/**/*.js",
-      "use": "@vercel/node"
+  "functions": {
+    "api/**/*.js": {
+      "runtime": "@vercel/node@3"
     }
-  ],
-  "routes": [
+  },
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
+      "source": "/api/mpesa-stk-push",
+      "destination": "/api/mpesa-stk-push.js"
+    },
+    {
+      "source": "/api/mpesa-callback",
+      "destination": "/api/mpesa-callback.js"
     }
   ],
   "env": {
