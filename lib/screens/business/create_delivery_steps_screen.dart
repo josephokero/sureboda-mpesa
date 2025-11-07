@@ -24,6 +24,8 @@ class _CreateDeliveryStepsScreenState extends State<CreateDeliveryStepsScreen> {
   // Step 1: Location Data
   final _pickupAddressController = TextEditingController();
   final _deliveryAddressController = TextEditingController();
+  final _pickupDetailsController = TextEditingController();
+  final _deliveryDetailsController = TextEditingController();
   double _pickupLat = -1.286389;
   double _pickupLng = 36.817223;
   double _deliveryLat = -1.292066;
@@ -56,6 +58,8 @@ class _CreateDeliveryStepsScreenState extends State<CreateDeliveryStepsScreen> {
   void dispose() {
     _pickupAddressController.dispose();
     _deliveryAddressController.dispose();
+    _pickupDetailsController.dispose();
+    _deliveryDetailsController.dispose();
     _packageDescriptionController.dispose();
     _packageWeightController.dispose();
     _recipientNameController.dispose();
@@ -374,16 +378,18 @@ class _CreateDeliveryStepsScreenState extends State<CreateDeliveryStepsScreen> {
         _buildLocationCard(
           'Pickup Location',
           _pickupAddressController,
+          _pickupDetailsController,
           Icons.store,
-          Colors.blue,
+          Colors.orange,
           true,
         ),
         const SizedBox(height: 20),
         _buildLocationCard(
           'Delivery Location',
           _deliveryAddressController,
+          _deliveryDetailsController,
           Icons.home,
-          AppColors.accent,
+          Colors.blue,
           false,
         ),
         const SizedBox(height: 24),
@@ -395,6 +401,7 @@ class _CreateDeliveryStepsScreenState extends State<CreateDeliveryStepsScreen> {
   Widget _buildLocationCard(
     String title,
     TextEditingController controller,
+    TextEditingController detailsController,
     IconData icon,
     Color color,
     bool isPickup,
@@ -422,8 +429,8 @@ class _CreateDeliveryStepsScreenState extends State<CreateDeliveryStepsScreen> {
               const SizedBox(width: 12),
               Text(
                 title,
-                style: const TextStyle(
-                  color: Colors.white,
+                style: TextStyle(
+                  color: color,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
@@ -431,22 +438,6 @@ class _CreateDeliveryStepsScreenState extends State<CreateDeliveryStepsScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          TextField(
-            controller: controller,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: 'Enter address or pick from map',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-              filled: true,
-              fillColor: Colors.white.withOpacity(0.05),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-            ),
-            onChanged: (_) => _calculateDeliveryFee(),
-          ),
-          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
@@ -471,24 +462,74 @@ class _CreateDeliveryStepsScreenState extends State<CreateDeliveryStepsScreen> {
                       _deliveryLat = result['latitude'];
                       _deliveryLng = result['longitude'];
                     }
-                    controller.text = result['address'];
+                    controller.text = result['address'] ?? 'Location Selected';
                   });
                   _calculateDeliveryFee();
                 }
               },
-              icon: Icon(Icons.map, color: color),
+              icon: Icon(Icons.map, color: Colors.white),
               label: Text(
-                'Pick from Map',
-                style: TextStyle(color: color, fontWeight: FontWeight.bold),
+                controller.text.isEmpty ? 'Enter Location' : 'Location Selected ✓',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: color.withOpacity(0.1),
+                backgroundColor: color,
                 elevation: 0,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: color.withOpacity(0.3)),
                 ),
+              ),
+            ),
+          ),
+          if (controller.text.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: color.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.location_on, color: color, size: 16),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      controller.text,
+                      style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 16),
+          TextField(
+            controller: detailsController,
+            style: const TextStyle(color: Colors.white),
+            maxLines: 2,
+            decoration: InputDecoration(
+              labelText: 'More Details (Optional)',
+              labelStyle: TextStyle(color: color.withOpacity(0.7)),
+              hintText: 'e.g., Floor 3, Building B, Next to...',
+              hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
+              filled: true,
+              fillColor: Colors.white.withOpacity(0.05),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: color.withOpacity(0.2)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: color, width: 2),
               ),
             ),
           ),

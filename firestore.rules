@@ -72,8 +72,15 @@ service cloud.firestore {
     
     // Transactions collection (M-Pesa payments)
     match /transactions/{transactionId} {
-      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      // Allow authenticated users to read their own transactions
+      allow read: if request.auth != null && 
+                    (resource.data.userId == request.auth.uid || 
+                     !('userId' in resource.data));
       
+      // Allow M-Pesa callback to create transactions (unauthenticated)
+      allow create: if true;
+      
+      // Allow authenticated users to create their own transactions
       allow create: if request.auth != null &&
                       request.resource.data.userId == request.auth.uid &&
                       request.resource.data.type == 'topup' &&

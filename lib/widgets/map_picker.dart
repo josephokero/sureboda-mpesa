@@ -214,66 +214,15 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   }
 
   List<String> _getPopularLocations(String query) {
-    final popularPlaces = [
-      'Westlands, Nairobi',
-      'Kilimani, Nairobi',
-      'Karen, Nairobi',
-      'Lavington, Nairobi',
-      'Parklands, Nairobi',
-      'South B, Nairobi',
-      'South C, Nairobi',
-      'Donholm, Nairobi',
-      'Buruburu, Nairobi',
-      'Embakasi, Nairobi',
-      'Kasarani, Nairobi',
-      'Roysambu, Nairobi',
-      'Ruaka, Nairobi',
-      'Kileleshwa, Nairobi',
-      'Makadara, Nairobi',
-      'Eastleigh, Nairobi',
-      'Githurai, Nairobi',
-      'Kahawa West, Nairobi',
-      'CBD, Nairobi',
-      'Upper Hill, Nairobi',
-    ];
-    
-    if (query.isEmpty) {
-      return popularPlaces.take(10).toList();
-    }
-    
-    var filtered = popularPlaces
-        .where((place) => place.toLowerCase().contains(query.toLowerCase()))
-        .toList();
-    
-    return filtered.take(10).toList();
+    // No hardcoded locations - accept all locations in Kenya
+    // Return empty list since we're using real-time search from Nominatim
+    return [];
   }
 
-  // Map of popular Nairobi locations with their coordinates
+  // Remove hardcoded coordinates - accept any location
   Map<String, LatLng> _getLocationCoordinates(String address) {
-    final coordinates = {
-      'Westlands, Nairobi': LatLng(-1.2676, 36.8070),
-      'Kilimani, Nairobi': LatLng(-1.2921, 36.7833),
-      'Karen, Nairobi': LatLng(-1.3194, 36.7072),
-      'Lavington, Nairobi': LatLng(-1.2833, 36.7667),
-      'Parklands, Nairobi': LatLng(-1.2636, 36.8153),
-      'South B, Nairobi': LatLng(-1.3167, 36.8333),
-      'South C, Nairobi': LatLng(-1.3167, 36.8167),
-      'Donholm, Nairobi': LatLng(-1.2806, 36.8944),
-      'Buruburu, Nairobi': LatLng(-1.2833, 36.8833),
-      'Embakasi, Nairobi': LatLng(-1.3167, 36.8833),
-      'Kasarani, Nairobi': LatLng(-1.2167, 36.8833),
-      'Roysambu, Nairobi': LatLng(-1.2167, 36.8667),
-      'Ruaka, Nairobi': LatLng(-1.2000, 36.7833),
-      'Kileleshwa, Nairobi': LatLng(-1.2833, 36.7833),
-      'Makadara, Nairobi': LatLng(-1.3086, 36.8444),
-      'Eastleigh, Nairobi': LatLng(-1.2800, 36.8500),
-      'Githurai, Nairobi': LatLng(-1.1500, 36.8833),
-      'Kahawa West, Nairobi': LatLng(-1.1833, 36.9167),
-      'CBD, Nairobi': LatLng(-1.2864, 36.8172),
-      'Upper Hill, Nairobi': LatLng(-1.2925, 36.8167),
-    };
-    
-    return coordinates;
+    // Return empty map - all coordinates come from search API
+    return {};
   }
 
   Future<void> _selectSearchResult(String address) async {
