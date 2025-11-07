@@ -115,7 +115,7 @@ module.exports = async (req, res) => {
     const response = await axios.post(
       `${BASE_URL}/mpesa/stkpush/v1/processrequest`,
       {
-        BusinessShortCode: MPESA_CONFIG.shortCode,
+        BusinessShortCode: MPESA_CONFIG.tillNumber,
         Password: password,
         Timestamp: timestamp,
         TransactionType: 'CustomerBuyGoodsOnline',
@@ -162,4 +162,6 @@ module.exports = async (req, res) => {
       message: 'Failed to initiate payment',
     });
   }
+};
+
 };
