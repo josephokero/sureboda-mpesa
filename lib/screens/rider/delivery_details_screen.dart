@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../../models/delivery_model.dart';
 import '../../models/user_model.dart';
@@ -22,10 +23,10 @@ class DeliveryDetailsScreen extends StatefulWidget {
 }
 
 class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
-  GoogleMapController? _mapController;
+  final MapController _mapController = MapController();
   Position? _currentPosition;
-  final Set<Marker> _markers = {};
-  final Set<Polyline> _polylines = {};
+  bool _isLoading = false;
+  bool _showRatingDialog = false;
 
   @override
   void initState() {
@@ -39,71 +40,8 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
     
     if (hasPermission) {
       _currentPosition = await LocationService.getCurrentLocation();
-      setState(() {});
+      if (mounted) setState(() {});
     }
-
-    // Add markers for pickup and delivery locations
-    _markers.add(
-      Marker(
-        markerId: const MarkerId('pickup'),
-        position: LatLng(
-          widget.delivery.pickupLocation.latitude,
-          widget.delivery.pickupLocation.longitude,
-        ),
-        infoWindow: InfoWindow(
-          title: 'Pickup Location',
-          snippet: widget.delivery.pickupLocation.address,
-        ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-      ),
-    );
-
-    _markers.add(
-      Marker(
-        markerId: const MarkerId('delivery'),
-        position: LatLng(
-          widget.delivery.deliveryLocation.latitude,
-          widget.delivery.deliveryLocation.longitude,
-        ),
-        infoWindow: InfoWindow(
-          title: 'Delivery Location',
-          snippet: widget.delivery.deliveryLocation.address,
-        ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-      ),
-    );
-
-    if (_currentPosition != null) {
-      _markers.add(
-        Marker(
-          markerId: const MarkerId('current'),
-          position: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-          infoWindow: const InfoWindow(title: 'Your Location'),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-        ),
-      );
-    }
-
-    // Draw route line between pickup and delivery
-    _polylines.add(
-      Polyline(
-        polylineId: const PolylineId('route'),
-        points: [
-          LatLng(
-            widget.delivery.pickupLocation.latitude,
-            widget.delivery.pickupLocation.longitude,
-          ),
-          LatLng(
-            widget.delivery.deliveryLocation.latitude,
-            widget.delivery.deliveryLocation.longitude,
-          ),
-        ],
-        color: AppColors.accent,
-        width: 4,
-      ),
-    );
-
-    setState(() {});
   }
 
   @override
@@ -124,11 +62,10 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
           IconButton(
             icon: const Icon(Icons.my_location, color: Colors.white),
             onPressed: () {
-              if (_currentPosition != null && _mapController != null) {
-                _mapController!.animateCamera(
-                  CameraUpdate.newLatLng(
-                    LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-                  ),
+              if (_currentPosition != null) {
+                _mapController.move(
+                  LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                  15,
                 );
               }
             },
@@ -153,31 +90,175 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   }
 
   Widget _buildMap() {
-    return Container(
-      height: 300,
-      color: AppColors.cardDark,
-      child: _markers.isEmpty
-          ? Center(
-              child: CircularProgressIndicator(color: AppColors.accent),
-            )
-          : GoogleMap(
-              initialCameraPosition: CameraPosition(
-                target: LatLng(
-                  widget.delivery.pickupLocation.latitude,
-                  widget.delivery.pickupLocation.longitude,
-                ),
-                zoom: 13,
-              ),
-              onMapCreated: (controller) => _mapController = controller,
-              markers: _markers,
-              polylines: _polylines,
-              myLocationEnabled: true,
-              myLocationButtonEnabled: false,
-              zoomControlsEnabled: false,
-              mapToolbarEnabled: false,
-              onCameraMove: (_) {},
-            ),
+    final pickupLatLng = LatLng(
+      widget.delivery.pickupLocation.latitude,
+      widget.delivery.pickupLocation.longitude,
     );
+    final dropoffLatLng = LatLng(
+      widget.delivery.deliveryLocation.latitude,
+      widget.delivery.deliveryLocation.longitude,
+    );
+
+    // Calculate center and zoom to show both points
+    final bounds = LatLngBounds(pickupLatLng, dropoffLatLng);
+    final center = bounds.center;
+
+    return Container(
+      height: 350,
+      decoration: BoxDecoration(
+        color: AppColors.cardDark,
+        border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.1))),
+      ),
+      child: Stack(
+        children: [
+          FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: center,
+              initialZoom: 13.0,
+              minZoom: 5.0,
+              maxZoom: 18.0,
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.sureboda.surebodaApp',
+              ),
+              // Blue route line from pickup to dropoff
+              PolylineLayer(
+                polylines: [
+                  Polyline(
+                    points: [pickupLatLng, dropoffLatLng],
+                    strokeWidth: 5.0,
+                    color: Colors.blue,
+                    borderStrokeWidth: 2.0,
+                    borderColor: Colors.blue.withOpacity(0.3),
+                  ),
+                ],
+              ),
+              // Markers
+              MarkerLayer(
+                markers: [
+                  // Pickup marker (Orange)
+                  Marker(
+                    point: pickupLatLng,
+                    width: 60,
+                    height: 60,
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.orange,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 3),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.orange.withOpacity(0.5),
+                                blurRadius: 10,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.store,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Dropoff marker (Blue)
+                  Marker(
+                    point: dropoffLatLng,
+                    width: 60,
+                    height: 60,
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.blue,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 3),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.blue.withOpacity(0.5),
+                                blurRadius: 10,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.location_on,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Current location marker if available
+                  if (_currentPosition != null)
+                    Marker(
+                      point: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+                      width: 40,
+                      height: 40,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: AppColors.accent,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 3),
+                        ),
+                        child: const Icon(
+                          Icons.navigation,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          // Distance badge
+          Positioned(
+            top: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.blue.withOpacity(0.5)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.route, color: Colors.blue, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    _calculateDistance(pickupLatLng, dropoffLatLng),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _calculateDistance(LatLng point1, LatLng point2) {
+    const Distance distance = Distance();
+    final km = distance.as(LengthUnit.Kilometer, point1, point2);
+    return '${km.toStringAsFixed(1)} km';
   }
 
   Widget _buildDeliveryInfo(BuildContext context) {
@@ -567,90 +648,414 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   }
 
   Widget _buildStatusButton(BuildContext context) {
-    if (widget.delivery.status == DeliveryStatus.accepted) {
+    // For pending deliveries - show Accept button
+    if (widget.delivery.status == DeliveryStatus.pending) {
       return SizedBox(
         width: double.infinity,
         height: 56,
         child: ElevatedButton(
-          onPressed: () => _updateStatus(context, DeliveryStatus.pickedUp),
+          onPressed: _isLoading ? null : () => _acceptDelivery(context),
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue,
+            backgroundColor: AppColors.accent,
+            disabledBackgroundColor: AppColors.accent.withOpacity(0.5),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 8,
+            shadowColor: AppColors.accent.withOpacity(0.5),
           ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.check_circle, color: Colors.white),
-              SizedBox(width: 12),
-              Text(
-                'Confirm Pickup',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+          child: _isLoading
+              ? const SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(
+                    color: Colors.white,
+                    strokeWidth: 2,
+                  ),
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.white, size: 24),
+                    SizedBox(width: 12),
+                    Text(
+                      'Accept Delivery',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
         ),
       );
-    } else if (widget.delivery.status == DeliveryStatus.pickedUp) {
+    }
+    // For accepted deliveries - show "Reached Pickup Point" button
+    else if (widget.delivery.status == DeliveryStatus.accepted) {
       return SizedBox(
         width: double.infinity,
         height: 56,
         child: ElevatedButton(
-          onPressed: () => _updateStatus(context, DeliveryStatus.inTransit),
+          onPressed: _isLoading ? null : () => _updateStatus(context, DeliveryStatus.pickedUp),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.orange,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 8,
+            shadowColor: Colors.orange.withOpacity(0.5),
+          ),
+          child: _isLoading
+              ? const SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.store, color: Colors.white),
+                    SizedBox(width: 12),
+                    Text(
+                      'Reached Pickup Point',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      );
+    }
+    // For picked up deliveries - show "Start Journey" button
+    else if (widget.delivery.status == DeliveryStatus.pickedUp) {
+      return SizedBox(
+        width: double.infinity,
+        height: 56,
+        child: ElevatedButton(
+          onPressed: _isLoading ? null : () => _updateStatus(context, DeliveryStatus.inTransit),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.purple,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 8,
+            shadowColor: Colors.purple.withOpacity(0.5),
           ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.local_shipping, color: Colors.white),
-              SizedBox(width: 12),
-              Text(
-                'Start Delivery',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+          child: _isLoading
+              ? const SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.directions_bike, color: Colors.white),
+                    SizedBox(width: 12),
+                    Text(
+                      'Start Journey',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
         ),
       );
-    } else if (widget.delivery.status == DeliveryStatus.inTransit) {
+    }
+    // For in transit deliveries - show "Delivered" button
+    else if (widget.delivery.status == DeliveryStatus.inTransit) {
       return SizedBox(
         width: double.infinity,
         height: 56,
         child: ElevatedButton(
-          onPressed: () => _updateStatus(context, DeliveryStatus.delivered),
+          onPressed: _isLoading ? null : () => _showDeliveryConfirmation(context),
           style: ElevatedButton.styleFrom(
             backgroundColor: Colors.green,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            elevation: 8,
+            shadowColor: Colors.green.withOpacity(0.5),
           ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.done_all, color: Colors.white),
-              SizedBox(width: 12),
-              Text(
-                'Complete Delivery',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+          child: _isLoading
+              ? const SizedBox(
+                  height: 24,
+                  width: 24,
+                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                )
+              : const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.location_on, color: Colors.white),
+                    SizedBox(width: 12),
+                    Text(
+                      'Mark as Delivered',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
         ),
       );
     }
 
     return Container();
+  }
+
+  Future<void> _acceptDelivery(BuildContext context) async {
+    setState(() => _isLoading = true);
+    
+    try {
+      await FirebaseFirestore.instance
+          .collection('deliveries')
+          .doc(widget.delivery.id)
+          .update({
+        'status': 'accepted',
+        'riderId': widget.rider.uid,
+        'riderName': widget.rider.fullName,
+        'acceptedAt': Timestamp.now(),
+      });
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Delivery accepted! Start your journey when ready.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        
+        // Refresh the screen to show new status
+        Navigator.pop(context);
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => DeliveryDetailsScreen(
+              delivery: widget.delivery.copyWith(
+                status: DeliveryStatus.accepted,
+                riderId: widget.rider.uid,
+                riderName: widget.rider.fullName,
+              ),
+              rider: widget.rider,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error accepting delivery: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _showDeliveryConfirmation(BuildContext context) async {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.green, size: 28),
+              SizedBox(width: 12),
+              Text(
+                'Confirm Delivery',
+                style: TextStyle(color: Colors.white),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Have you successfully delivered the package to the recipient?',
+            style: TextStyle(color: Colors.white70, fontSize: 15),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                _completeDelivery(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Confirm', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _completeDelivery(BuildContext context) async {
+    setState(() => _isLoading = true);
+    
+    try {
+      await FirebaseFirestore.instance
+          .collection('deliveries')
+          .doc(widget.delivery.id)
+          .update({
+        'status': 'delivered',
+        'deliveredAt': Timestamp.now(),
+      });
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Delivery completed! Payment will be added to your wallet.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        
+        // Show rating dialog after a short delay
+        await Future.delayed(const Duration(milliseconds: 500));
+        if (context.mounted) {
+          _showRatingDialog(context);
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error completing delivery: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showRatingDialog(BuildContext context) {
+    int rating = 5;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: AppColors.cardDark,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.star, color: Colors.amber, size: 40),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Rate the Business',
+                    style: TextStyle(color: Colors.white, fontSize: 20),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.delivery.businessName,
+                    style: TextStyle(
+                      color: AppColors.accent,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (index) {
+                      return IconButton(
+                        onPressed: () {
+                          setDialogState(() {
+                            rating = index + 1;
+                          });
+                        },
+                        icon: Icon(
+                          index < rating ? Icons.star : Icons.star_border,
+                          color: Colors.amber,
+                          size: 40,
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    rating == 5
+                        ? 'Excellent!'
+                        : rating >= 4
+                            ? 'Very Good!'
+                            : rating >= 3
+                                ? 'Good'
+                                : 'Needs Improvement',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    Navigator.pop(context); // Go back to rider home
+                  },
+                  child: const Text('Skip', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    await _submitRating(rating);
+                    if (dialogContext.mounted) Navigator.pop(dialogContext);
+                    if (context.mounted) Navigator.pop(context); // Go back to rider home
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Submit', style: TextStyle(color: Colors.white)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _submitRating(int rating) async {
+    try {
+      await FirebaseFirestore.instance.collection('reviews').add({
+        'deliveryId': widget.delivery.id,
+        'businessId': widget.delivery.businessId,
+        'riderId': widget.rider.uid,
+        'rating': rating,
+        'createdAt': Timestamp.now(),
+      });
+    } catch (e) {
+      print('Error submitting rating: $e');
+    }
   }
 
   Future<void> _updateStatus(BuildContext context, DeliveryStatus newStatus) async {
