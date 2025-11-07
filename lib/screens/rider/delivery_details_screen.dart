@@ -3,10 +3,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../../models/delivery_model.dart';
 import '../../models/user_model.dart';
 import '../../utils/theme.dart';
 import '../../services/location_service.dart';
+import 'chat_screen.dart';
 
 class DeliveryDetailsScreen extends StatefulWidget {
   final DeliveryModel delivery;
@@ -26,12 +29,14 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   final MapController _mapController = MapController();
   Position? _currentPosition;
   bool _isLoading = false;
-  bool _showRatingDialog = false;
+  List<LatLng> _routePoints = [];
+  bool _isLoadingRoute = true;
 
   @override
   void initState() {
     super.initState();
     _initializeMap();
+    _fetchRoute();
   }
 
   Future<void> _initializeMap() async {
@@ -41,6 +46,59 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
     if (hasPermission) {
       _currentPosition = await LocationService.getCurrentLocation();
       if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _fetchRoute() async {
+    try {
+      final pickupLat = widget.delivery.pickupLocation.latitude;
+      final pickupLng = widget.delivery.pickupLocation.longitude;
+      final dropoffLat = widget.delivery.deliveryLocation.latitude;
+      final dropoffLng = widget.delivery.deliveryLocation.longitude;
+
+      // Using OpenRouteService API (free tier allows 2000 requests/day)
+      final url = Uri.parse(
+        'https://api.openrouteservice.org/v2/directions/driving-car?'
+        'start=$pickupLng,$pickupLat&end=$dropoffLng,$dropoffLat',
+      );
+
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': '5b3ce3597851110001cf6248a1c0d0c1e7c44e2ab3c3fa6c9e3c0c8a', // Free public key
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final coordinates = data['features'][0]['geometry']['coordinates'] as List;
+        
+        setState(() {
+          _routePoints = coordinates
+              .map((coord) => LatLng(coord[1] as double, coord[0] as double))
+              .toList();
+          _isLoadingRoute = false;
+        });
+      } else {
+        // Fallback to straight line if API fails
+        setState(() {
+          _routePoints = [
+            LatLng(pickupLat, pickupLng),
+            LatLng(dropoffLat, dropoffLng),
+          ];
+          _isLoadingRoute = false;
+        });
+      }
+    } catch (e) {
+      print('Error fetching route: $e');
+      // Fallback to straight line
+      setState(() {
+        _routePoints = [
+          LatLng(widget.delivery.pickupLocation.latitude, widget.delivery.pickupLocation.longitude),
+          LatLng(widget.delivery.deliveryLocation.latitude, widget.delivery.deliveryLocation.longitude),
+        ];
+        _isLoadingRoute = false;
+      });
     }
   }
 
@@ -124,18 +182,19 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.sureboda.surebodaApp',
               ),
-              // Blue route line from pickup to dropoff
-              PolylineLayer(
-                polylines: [
-                  Polyline(
-                    points: [pickupLatLng, dropoffLatLng],
-                    strokeWidth: 5.0,
-                    color: Colors.blue,
-                    borderStrokeWidth: 2.0,
-                    borderColor: Colors.blue.withOpacity(0.3),
-                  ),
-                ],
-              ),
+              // Blue route line following actual roads
+              if (_routePoints.isNotEmpty)
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: _routePoints,
+                      strokeWidth: 6.0,
+                      color: Colors.blue,
+                      borderStrokeWidth: 2.0,
+                      borderColor: Colors.white,
+                    ),
+                  ],
+                ),
               // Markers
               MarkerLayer(
                 markers: [
@@ -222,6 +281,41 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
               ),
             ],
           ),
+          // Route loading indicator
+          if (_isLoadingRoute)
+            Positioned(
+              top: 16,
+              left: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Loading route...',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           // Distance badge
           Positioned(
             top: 16,
@@ -499,70 +593,214 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   }
 
   Widget _buildRecipientInfo(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.cardDark,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Recipient',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
+    return Column(
+      children: [
+        // Business Contact Section with Chat
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                AppColors.accent.withOpacity(0.2),
+                AppColors.accent.withOpacity(0.05),
+              ],
             ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.accent.withOpacity(0.3)),
           ),
-          const SizedBox(height: 16),
-          Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.person, color: AppColors.accent, size: 28),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.delivery.recipientName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+              Row(
+                children: [
+                  Icon(Icons.business, color: AppColors.accent, size: 20),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Business Contact',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
-                    Text(
-                      widget.delivery.recipientPhone,
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              IconButton(
-                onPressed: () {},
-                icon: Icon(Icons.phone, color: AppColors.accent, size: 24),
-                style: IconButton.styleFrom(
-                  backgroundColor: AppColors.accent.withOpacity(0.1),
-                ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.store, color: AppColors.accent, size: 28),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.delivery.businessName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Pickup Location Contact',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.6),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {},
+                    icon: Icon(Icons.phone, color: AppColors.accent, size: 24),
+                    style: IconButton.styleFrom(
+                      backgroundColor: AppColors.accent.withOpacity(0.2),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ChatScreen(
+                            deliveryId: widget.delivery.id!,
+                            otherUserId: widget.delivery.businessId,
+                            otherUserName: widget.delivery.businessName,
+                            currentUserId: widget.rider.uid,
+                            currentUserName: widget.rider.fullName,
+                          ),
+                        ),
+                      );
+                    },
+                    icon: Icon(Icons.chat_bubble, color: AppColors.accent, size: 24),
+                    style: IconButton.styleFrom(
+                      backgroundColor: AppColors.accent.withOpacity(0.2),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
+        ),
+        const SizedBox(height: 16),
+        // Recipient/Delivery Person Section
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 20),
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: AppColors.cardDark,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.blue.withOpacity(0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.person_pin, color: Colors.blue, size: 20),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Delivery Recipient',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.withOpacity(0.5)),
+                    ),
+                    child: const Text(
+                      'DELIVER TO',
+                      style: TextStyle(
+                        color: Colors.blue,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.2),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.person, color: Colors.blue, size: 28),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.delivery.recipientName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(Icons.phone_android, color: Colors.blue, size: 14),
+                            const SizedBox(width: 4),
+                            Text(
+                              widget.delivery.recipientPhone,
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.8),
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Person receiving the package',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.5),
+                            fontSize: 11,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () {},
+                    icon: const Icon(Icons.phone, color: Colors.blue, size: 24),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.blue.withOpacity(0.2),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
