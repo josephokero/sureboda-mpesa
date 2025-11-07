@@ -1,0 +1,8 @@
+{
+  "name": "sureboda-mpesa-api",
+  "version": "1.0.0",
+  "description": "M-Pesa STK Push API",
+  "dependencies": {
+    "axios": "^1.6.0"
+  }
+}
