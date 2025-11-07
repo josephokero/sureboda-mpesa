@@ -8,7 +8,7 @@ import 'dart:convert';
 /// Works on ALL platforms (web, Android, iOS).
 /// 
 /// Your Vercel project: sureboda-mpesa
-/// Endpoint: https://sureboda-mpesa.vercel.app/api/mpesa-stk-push
+/// Endpoint: https://sureboda-mpesa.vercel.app/api/mpesa_stk_push
 class MpesaVercelService {
   // Your Vercel deployment URL
   final String vercelBaseUrl = 'https://sureboda-mpesa.vercel.app';
@@ -30,11 +30,11 @@ class MpesaVercelService {
   }) async {
     try {
       debugPrint('📱 Initiating M-Pesa STK Push via Vercel...');
-      debugPrint('Endpoint: $vercelBaseUrl/api/mpesa-stk-push');
+      debugPrint('Endpoint: $vercelBaseUrl/api/mpesa_stk_push');
       debugPrint('Phone: $phoneNumber, Amount: KSH $amount');
       
       final response = await http.post(
-        Uri.parse('$vercelBaseUrl/api/mpesa-stk-push'),
+        Uri.parse('$vercelBaseUrl/api/mpesa_stk_push'),
         headers: {
           'Content-Type': 'application/json',
         },
@@ -107,7 +107,7 @@ class MpesaVercelService {
   Future<bool> testConnection() async {
     try {
       final response = await http.get(
-        Uri.parse('$vercelBaseUrl/api/mpesa-stk-push'),
+        Uri.parse('$vercelBaseUrl/api/mpesa_stk_push'),
       );
       
       debugPrint('Connection test: ${response.statusCode}');
