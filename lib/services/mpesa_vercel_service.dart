@@ -11,7 +11,7 @@ import 'dart:convert';
 /// Endpoint: https://sureboda-mpesa.vercel.app/api/mpesa_stk_push
 class MpesaVercelService {
   // Your Vercel deployment URL
-  final String vercelBaseUrl = 'https://mpesa-api-sureboda.vercel.app';
+  final String vercelBaseUrl = 'https://mpesa-api-six.vercel.app';
   
   /// Initiate STK Push via Vercel Function
   /// 
