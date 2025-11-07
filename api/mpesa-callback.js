@@ -6,7 +6,7 @@
  * Receives payment confirmation from Safaricom
  */
 
-export default async (req, res) => {
+module.exports = async (req, res) => {
   // Enable CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
