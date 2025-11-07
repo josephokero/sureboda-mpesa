@@ -2,11 +2,16 @@
   "version": 2,
   "builds": [
     {
-      "src": "vercel-build.sh",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "build/web"
-      }
+      "src": "api/**/*.js",
+      "use": "@vercel/node"
     }
-  ]
+  ],
+  "env": {
+    "MPESA_CONSUMER_KEY": "@mpesa-consumer-key",
+    "MPESA_CONSUMER_SECRET": "@mpesa-consumer-secret",
+    "MPESA_SHORTCODE": "@mpesa-shortcode",
+    "MPESA_TILL": "@mpesa-till",
+    "MPESA_PASSKEY": "@mpesa-passkey",
+    "MPESA_ENV": "production"
+  }
 }
