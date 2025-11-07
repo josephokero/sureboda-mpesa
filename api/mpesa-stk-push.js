@@ -1,9 +1,10 @@
 /**
  * Vercel Serverless Function: M-Pesa STK Push
  * 
- * Endpoint: https://your-project.vercel.app/api/mpesa-stk-push
+ * Endpoint: https://sureboda-mpesa.vercel.app/api/mpesa-stk-push
  * 
  * This function proxies M-Pesa API requests to avoid CORS issues on web.
+ * Updated: 2025-11-07
  */
 
 const axios = require('axios');
