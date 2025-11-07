@@ -1,4 +1,4 @@
-# Ignore Flutter web build and source files
+# Ignore Flutter files - deploy only the API
 web/
 build/
 lib/
@@ -9,22 +9,14 @@ android/
 linux/
 macos/
 windows/
-
-# Ignore Flutter config files
 pubspec.yaml
 pubspec.lock
 analysis_options.yaml
 *.iml
-
-# Ignore other project files that shouldn't be deployed
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
 .metadata
 .packages
-
-# Keep only the API directory and necessary config
-!api/
-!vercel.json
-!package.json
-!node_modules/
+README.md
+*.md
