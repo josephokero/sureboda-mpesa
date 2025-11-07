@@ -207,10 +207,13 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
             .snapshots(),
         builder: (context, snapshot) {
           double walletBalance = widget.user.walletBalance;
+          double pendingBalance = widget.user.pendingBalance;
           if (snapshot.hasData && snapshot.data!.exists) {
             final data = snapshot.data!.data() as Map<String, dynamic>;
             walletBalance = (data['walletBalance'] ?? 0.0).toDouble();
+            pendingBalance = (data['pendingBalance'] ?? 0.0).toDouble();
           }
+          double availableBalance = walletBalance - pendingBalance;
 
           return InkWell(
             onTap: () async {
@@ -280,12 +283,24 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
                             fontWeight: FontWeight.bold,
                           ),
                         ),
+                        if (pendingBalance > 0) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            '- KSH ${pendingBalance.toStringAsFixed(2)} (Pending)',
+                            style: const TextStyle(
+                              color: Colors.red,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 4),
                         Text(
-                          'Available for deliveries',
+                          'Available: KSH ${availableBalance.toStringAsFixed(2)}',
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
+                            color: Colors.white.withOpacity(0.9),
                             fontSize: 11,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ],
@@ -840,13 +855,34 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
                   ),
                 ],
               ),
-              Text(
-                'KSH ${delivery.deliveryFee.toStringAsFixed(0)}',
-                style: TextStyle(
-                  color: AppColors.accent,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    'KSH ${delivery.deliveryFee.toStringAsFixed(0)}',
+                    style: TextStyle(
+                      color: _getPaymentStatusColor(delivery.paymentStatus ?? 'pending'),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: _getPaymentStatusColor(delivery.paymentStatus ?? 'pending').withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _getPaymentStatusText(delivery.paymentStatus ?? 'pending'),
+                      style: TextStyle(
+                        color: _getPaymentStatusColor(delivery.paymentStatus ?? 'pending'),
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1047,6 +1083,36 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
         return Colors.green;
       case DeliveryStatus.cancelled:
         return Colors.red;
+    }
+  }
+
+  Color _getPaymentStatusColor(String paymentStatus) {
+    switch (paymentStatus) {
+      case 'pending':
+        return Colors.red; // Red for pending (money reserved)
+      case 'in_transit':
+        return Colors.orange; // Orange when rider picked up
+      case 'completed':
+        return Colors.green; // Green when delivered
+      case 'cancelled':
+        return Colors.grey;
+      default:
+        return Colors.red;
+    }
+  }
+
+  String _getPaymentStatusText(String paymentStatus) {
+    switch (paymentStatus) {
+      case 'pending':
+        return 'PENDING';
+      case 'in_transit':
+        return 'IN TRANSIT';
+      case 'completed':
+        return 'PAID';
+      case 'cancelled':
+        return 'CANCELLED';
+      default:
+        return 'PENDING';
     }
   }
 

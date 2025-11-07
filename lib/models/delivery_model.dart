@@ -13,11 +13,13 @@ class LocationData {
   final double latitude;
   final double longitude;
   final String address;
+  final String? details;
 
   LocationData({
     required this.latitude,
     required this.longitude,
     required this.address,
+    this.details,
   });
 
   Map<String, dynamic> toMap() {
@@ -25,6 +27,7 @@ class LocationData {
       'latitude': latitude,
       'longitude': longitude,
       'address': address,
+      'details': details,
     };
   }
 
@@ -33,6 +36,7 @@ class LocationData {
       latitude: map['latitude']?.toDouble() ?? 0.0,
       longitude: map['longitude']?.toDouble() ?? 0.0,
       address: map['address'] ?? '',
+      details: map['details'],
     );
   }
 }
@@ -57,6 +61,7 @@ class DeliveryModel {
   final DateTime? deliveredAt;
   final String? cancelReason;
   final bool isPaid;
+  final String? paymentStatus; // 'pending', 'in_transit', 'completed'
   final String? paymentTransactionId;
   final String? specialInstructions;
   final DateTime? scheduledFor;
@@ -85,6 +90,7 @@ class DeliveryModel {
     this.deliveredAt,
     this.cancelReason,
     this.isPaid = false,
+    this.paymentStatus = 'pending',
     this.paymentTransactionId,
     this.specialInstructions,
     this.scheduledFor,
@@ -136,6 +142,7 @@ class DeliveryModel {
       deliveredAt: data['deliveredAt'] != null ? (data['deliveredAt'] as Timestamp).toDate() : null,
       cancelReason: data['cancelReason'],
       isPaid: data['isPaid'] ?? false,
+      paymentStatus: data['paymentStatus'] ?? 'pending',
       paymentTransactionId: data['paymentTransactionId'],
       specialInstructions: data['specialInstructions'],
       scheduledFor: data['scheduledFor'] != null ? (data['scheduledFor'] as Timestamp).toDate() : null,
@@ -183,6 +190,7 @@ class DeliveryModel {
       'deliveredAt': deliveredAt != null ? Timestamp.fromDate(deliveredAt!) : null,
       'cancelReason': cancelReason,
       'isPaid': isPaid,
+      'paymentStatus': paymentStatus,
       'paymentTransactionId': paymentTransactionId,
       'specialInstructions': specialInstructions,
       'scheduledFor': scheduledFor != null ? Timestamp.fromDate(scheduledFor!) : null,
@@ -202,6 +210,7 @@ class DeliveryModel {
     DateTime? deliveredAt,
     String? cancelReason,
     bool? isPaid,
+    String? paymentStatus,
     String? paymentTransactionId,
   }) {
     return DeliveryModel(
@@ -224,6 +233,7 @@ class DeliveryModel {
       deliveredAt: deliveredAt ?? this.deliveredAt,
       cancelReason: cancelReason ?? this.cancelReason,
       isPaid: isPaid ?? this.isPaid,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
       paymentTransactionId: paymentTransactionId ?? this.paymentTransactionId,
       specialInstructions: specialInstructions,
     );

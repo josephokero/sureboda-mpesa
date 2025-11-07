@@ -81,12 +81,22 @@ class _CreateDeliveryStepsScreenState extends State<CreateDeliveryStepsScreen> {
   }
 
   Future<void> _createDelivery() async {
-    // Check wallet balance
-    if (widget.user.walletBalance < _calculatedFee) {
+    // Check wallet balance (including pending amounts)
+    final userDoc = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.user.uid)
+        .get();
+    
+    final userData = userDoc.data() as Map<String, dynamic>;
+    final currentBalance = (userData['walletBalance'] ?? 0.0).toDouble();
+    final pendingBalance = (userData['pendingBalance'] ?? 0.0).toDouble();
+    final availableBalance = currentBalance - pendingBalance;
+    
+    if (availableBalance < _calculatedFee) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Insufficient balance. Please top up your wallet. Required: KSH ${_calculatedFee.toStringAsFixed(0)}'),
+            content: Text('Insufficient balance. Available: KSH ${availableBalance.toStringAsFixed(0)}, Required: KSH ${_calculatedFee.toStringAsFixed(0)}'),
             backgroundColor: Colors.red,
             action: SnackBarAction(
               label: 'TOP UP',
@@ -123,11 +133,13 @@ class _CreateDeliveryStepsScreenState extends State<CreateDeliveryStepsScreen> {
           latitude: _pickupLat,
           longitude: _pickupLng,
           address: _pickupAddressController.text,
+          details: _pickupDetailsController.text.isNotEmpty ? _pickupDetailsController.text : null,
         ),
         deliveryLocation: LocationData(
           latitude: _deliveryLat,
           longitude: _deliveryLng,
           address: _deliveryAddressController.text,
+          details: _deliveryDetailsController.text.isNotEmpty ? _deliveryDetailsController.text : null,
         ),
         recipientName: _recipientNameController.text,
         recipientPhone: _recipientPhoneController.text,
@@ -137,6 +149,7 @@ class _CreateDeliveryStepsScreenState extends State<CreateDeliveryStepsScreen> {
         status: DeliveryStatus.pending,
         createdAt: DateTime.now(),
         isPaid: false,
+        paymentStatus: 'pending', // New field
         specialInstructions: _specialInstructionsController.text.isNotEmpty
             ? _specialInstructionsController.text
             : null,
@@ -147,23 +160,23 @@ class _CreateDeliveryStepsScreenState extends State<CreateDeliveryStepsScreen> {
           .collection('deliveries')
           .add(delivery.toMap());
 
-      // Deduct from wallet
+      // Add to pending balance (don't deduct wallet yet)
       await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.user.uid)
           .update({
-        'walletBalance': FieldValue.increment(-_calculatedFee),
+        'pendingBalance': FieldValue.increment(_calculatedFee),
       });
 
-      // Create transaction
+      // Create pending transaction
       await FirebaseFirestore.instance.collection('transactions').add({
         'userId': widget.user.uid,
-        'type': 'payment',
+        'type': 'pending_payment',
         'amount': _calculatedFee,
         'timestamp': FieldValue.serverTimestamp(),
         'deliveryId': docRef.id,
-        'description': 'Delivery Payment - ${_recipientNameController.text}',
-        'balanceAfter': widget.user.walletBalance - _calculatedFee,
+        'description': 'Pending Delivery Payment - ${_recipientNameController.text}',
+        'status': 'pending',
       });
 
       if (mounted) {

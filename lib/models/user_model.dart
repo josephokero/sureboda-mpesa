@@ -13,6 +13,7 @@ class UserModel {
   final String? businessName;
   final String? profileImage;
   final double walletBalance;
+  final double pendingBalance; // Money reserved for ongoing deliveries
   final bool active;
   final DateTime createdAt;
   final String? vehicleType; // For riders
@@ -35,6 +36,7 @@ class UserModel {
     this.businessName,
     this.profileImage,
     this.walletBalance = 0.0,
+    this.pendingBalance = 0.0,
     this.active = true,
     required this.createdAt,
     this.vehicleType,
@@ -70,6 +72,7 @@ class UserModel {
       businessName: data['businessName'],
       profileImage: data['profileImage'],
       walletBalance: (data['walletBalance'] ?? 0.0).toDouble(),
+      pendingBalance: (data['pendingBalance'] ?? 0.0).toDouble(),
       active: data['active'] ?? true,
       createdAt: data['createdAt'] != null 
           ? (data['createdAt'] as Timestamp).toDate() 
@@ -103,6 +106,7 @@ class UserModel {
       'businessName': businessName,
       'profileImage': profileImage,
       'walletBalance': walletBalance,
+      'pendingBalance': pendingBalance,
       'active': active,
       'createdAt': Timestamp.fromDate(createdAt),
       'vehicleType': vehicleType,
