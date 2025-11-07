@@ -1,5 +1,12 @@
 {
   "version": 2,
+  "builds": [
+    {
+      "src": "web/index.html",
+      "use": "@vercel/static-build",
+      "config": { "distDir": "build/web" }
+    }
+  ],
   "functions": {
     "api/**/*.js": {
       "runtime": "@vercel/node@3"
@@ -8,11 +15,11 @@
   "rewrites": [
     {
       "source": "/api/mpesa-stk-push",
-      "destination": "/api/mpesa-stk-push.js"
+      "destination": "/api/mpesa-stk-push"
     },
     {
       "source": "/api/mpesa-callback",
-      "destination": "/api/mpesa-callback.js"
+      "destination": "/api/mpesa-callback"
     }
   ],
   "env": {
