@@ -56,50 +56,61 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
       final dropoffLat = widget.delivery.deliveryLocation.latitude;
       final dropoffLng = widget.delivery.deliveryLocation.longitude;
 
-      // Using OpenRouteService API (free tier allows 2000 requests/day)
+      // Using Firebase Cloud Function as proxy to avoid CORS issues
       final url = Uri.parse(
-        'https://api.openrouteservice.org/v2/directions/driving-car?'
-        'start=$pickupLng,$pickupLat&end=$dropoffLng,$dropoffLat',
+        'https://us-central1-astute-empire.cloudfunctions.net/getRoute?'
+        'startLat=$pickupLat&startLng=$pickupLng&endLat=$dropoffLat&endLng=$dropoffLng',
       );
 
-      final response = await http.get(
-        url,
-        headers: {
-          'Authorization': '5b3ce3597851110001cf6248a1c0d0c1e7c44e2ab3c3fa6c9e3c0c8a', // Free public key
-        },
-      );
+      print('Fetching route from Cloud Function...');
+      final response = await http.get(url);
 
+      print('Response status: ${response.statusCode}');
+      
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final coordinates = data['features'][0]['geometry']['coordinates'] as List;
         
-        setState(() {
-          _routePoints = coordinates
-              .map((coord) => LatLng(coord[1] as double, coord[0] as double))
-              .toList();
-          _isLoadingRoute = false;
-        });
+        if (data['features'] != null && data['features'].isNotEmpty) {
+          final coordinates = data['features'][0]['geometry']['coordinates'] as List;
+          
+          setState(() {
+            _routePoints = coordinates
+                .map((coord) => LatLng(coord[1] as double, coord[0] as double))
+                .toList();
+            _isLoadingRoute = false;
+          });
+          
+          print('Route loaded successfully with ${_routePoints.length} points');
+        } else {
+          // No route found, use straight line
+          print('No route found in response, using straight line');
+          _useStraightLine(pickupLat, pickupLng, dropoffLat, dropoffLng);
+        }
       } else {
-        // Fallback to straight line if API fails
-        setState(() {
-          _routePoints = [
-            LatLng(pickupLat, pickupLng),
-            LatLng(dropoffLat, dropoffLng),
-          ];
-          _isLoadingRoute = false;
-        });
+        // API error, fallback to straight line
+        print('API error: ${response.statusCode}, using straight line');
+        _useStraightLine(pickupLat, pickupLng, dropoffLat, dropoffLng);
       }
     } catch (e) {
       print('Error fetching route: $e');
       // Fallback to straight line
-      setState(() {
-        _routePoints = [
-          LatLng(widget.delivery.pickupLocation.latitude, widget.delivery.pickupLocation.longitude),
-          LatLng(widget.delivery.deliveryLocation.latitude, widget.delivery.deliveryLocation.longitude),
-        ];
-        _isLoadingRoute = false;
-      });
+      _useStraightLine(
+        widget.delivery.pickupLocation.latitude,
+        widget.delivery.pickupLocation.longitude,
+        widget.delivery.deliveryLocation.latitude,
+        widget.delivery.deliveryLocation.longitude,
+      );
     }
+  }
+
+  void _useStraightLine(double pickupLat, double pickupLng, double dropoffLat, double dropoffLng) {
+    setState(() {
+      _routePoints = [
+        LatLng(pickupLat, pickupLng),
+        LatLng(dropoffLat, dropoffLng),
+      ];
+      _isLoadingRoute = false;
+    });
   }
 
   @override

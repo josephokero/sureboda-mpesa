@@ -1,5 +1,6 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+const https = require("https");
 
 admin.initializeApp();
 
@@ -183,3 +184,63 @@ exports.onDeliveryStatusChange = functions.firestore
       return null;
     }
   });
+
+/**
+ * Get route between two points using OpenRouteService API
+ * This function acts as a proxy to bypass CORS issues on web
+ */
+exports.getRoute = functions.https.onRequest(async (req, res) => {
+  // Enable CORS
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, POST');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+
+  try {
+    const { startLat, startLng, endLat, endLng } = req.query;
+
+    if (!startLat || !startLng || !endLat || !endLng) {
+      res.status(400).json({ error: 'Missing required parameters' });
+      return;
+    }
+
+    const apiUrl = `https://api.openrouteservice.org/v2/directions/driving-car?start=${startLng},${startLat}&end=${endLng},${endLat}`;
+
+    // Make request to OpenRouteService
+    const options = {
+      method: 'GET',
+      headers: {
+        'Authorization': '5b3ce3597851110001cf6248a1c0d0c1e7c44e2ab3c3fa6c9e3c0c8a',
+      },
+    };
+
+    https.get(apiUrl, options, (apiRes) => {
+      let data = '';
+
+      apiRes.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      apiRes.on('end', () => {
+        try {
+          const routeData = JSON.parse(data);
+          res.status(200).json(routeData);
+        } catch (error) {
+          console.error('Error parsing route data:', error);
+          res.status(500).json({ error: 'Failed to parse route data' });
+        }
+      });
+    }).on('error', (error) => {
+      console.error('Error fetching route:', error);
+      res.status(500).json({ error: 'Failed to fetch route' });
+    });
+
+  } catch (error) {
+    console.error('Error in getRoute function:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
