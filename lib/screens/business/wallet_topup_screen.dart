@@ -61,41 +61,59 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
       );
 
       if (response['success']) {
-        // Create pending transaction
-        final transactionRef = FirebaseFirestore.instance
-            .collection('transactions')
-            .doc();
-
-        await transactionRef.set({
-          'userId': widget.user.uid,
-          'type': 'topup',
-          'amount': amount,
-          'phoneNumber': _phoneController.text,
-          'status': 'completed',
-          'timestamp': FieldValue.serverTimestamp(),
-          'checkoutRequestId': response['checkoutRequestId'],
-          'description': 'Wallet Top-Up',
-        });
-
-        // Update user wallet balance
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(widget.user.uid)
-            .update({
-          'walletBalance': FieldValue.increment(amount),
-        });
-
+        final checkoutRequestId = response['checkoutRequestId'];
+        
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '✅ ${response['customerMessage'] ?? 'Payment request sent! Check your phone.'}',
+          // Show persistent loading dialog that detects payment
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogContext) => WillPopScope(
+              onWillPop: () async => false,
+              child: AlertDialog(
+                backgroundColor: AppColors.cardDark,
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(color: AppColors.accent),
+                    const SizedBox(height: 20),
+                    const Text(
+                      'Waiting for payment...',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Check your phone (${_phoneController.text})',
+                      style: const TextStyle(fontSize: 14, color: Colors.white70),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Enter your M-Pesa PIN to complete payment',
+                      style: TextStyle(fontSize: 12, color: Colors.white54),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'KSH ${amount.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.accent,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 5),
             ),
           );
-          Navigator.pop(context, true); // Return true to refresh previous screen
+
+          // Start listening for payment confirmation
+          _listenForPaymentConfirmation(checkoutRequestId, amount);
         }
       } else {
         if (mounted) {
@@ -125,6 +143,107 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
 
   void _setQuickAmount(double amount) {
     _amountController.text = amount.toStringAsFixed(0);
+  }
+
+  void _listenForPaymentConfirmation(String checkoutRequestId, double amount) {
+    // Listen to transactions collection for this checkout request
+    final subscription = FirebaseFirestore.instance
+        .collection('transactions')
+        .where('checkoutRequestId', isEqualTo: checkoutRequestId)
+        .snapshots()
+        .listen((snapshot) async {
+      if (snapshot.docs.isNotEmpty) {
+        final transaction = snapshot.docs.first.data();
+        
+        if (transaction['status'] == 'completed') {
+          // Payment successful! Update wallet balance
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(widget.user.uid)
+              .update({
+            'walletBalance': FieldValue.increment(amount),
+          });
+
+          if (mounted) {
+            // Close loading dialog
+            Navigator.pop(context);
+            
+            // Show success message
+            showDialog(
+              context: context,
+              builder: (context) => AlertDialog(
+                backgroundColor: AppColors.cardDark,
+                title: const Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.green, size: 32),
+                    SizedBox(width: 12),
+                    Text('Payment Successful!', style: TextStyle(color: Colors.white)),
+                  ],
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Amount: KSH ${amount.toStringAsFixed(0)}',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Receipt: ${transaction['mpesaReceiptNumber'] ?? 'N/A'}',
+                      style: const TextStyle(color: Colors.white70, fontSize: 12),
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      '✅ Your wallet has been updated',
+                      style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                    ),
+                  ],
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(context); // Close success dialog
+                      Navigator.pop(context, true); // Close topup screen with refresh
+                    },
+                    child: const Text('OK', style: TextStyle(color: AppColors.accent)),
+                  ),
+                ],
+              ),
+            );
+          }
+        } else if (transaction['status'] == 'failed') {
+          if (mounted) {
+            // Close loading dialog
+            Navigator.pop(context);
+            
+            // Show error message
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('❌ Payment failed: ${transaction['resultDesc'] ?? 'Unknown error'}'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 5),
+              ),
+            );
+          }
+        }
+      }
+    });
+
+    // Auto-cancel after 2 minutes if no response
+    Future.delayed(const Duration(seconds: 120), () {
+      subscription.cancel();
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context); // Close loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('⏱️ Payment timeout. Please check your M-Pesa messages or try again.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    });
   }
 
   @override
