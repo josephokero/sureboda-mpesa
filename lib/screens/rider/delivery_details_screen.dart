@@ -142,27 +142,86 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
     }
   }
 
+  Future<void> _openGoogleMapsNavigation(double startLat, double startLng, double endLat, double endLng, String destination) async {
+    // Google Maps URL with navigation
+    // Uses current location as start if available, otherwise uses provided start coordinates
+    final String googleMapsUrl = 'https://www.google.com/maps/dir/?api=1&origin=$startLat,$startLng&destination=$endLat,$endLng&travelmode=driving';
+    
+    final Uri mapsUri = Uri.parse(googleMapsUrl);
+    
+    try {
+      if (await canLaunchUrl(mapsUri)) {
+        await launchUrl(
+          mapsUri,
+          mode: LaunchMode.externalApplication, // Opens in Google Maps app if available
+        );
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Cannot open Google Maps. Please install Google Maps app.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error opening maps: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.black,
-      appBar: AppBar(
-        backgroundColor: AppColors.cardDark,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text(
-          'Delivery Details',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.my_location, color: Colors.white),
-            onPressed: () {
-              if (_currentPosition != null) {
-                _mapController.move(
-                  LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('deliveries')
+          .doc(widget.delivery.id)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return Scaffold(
+            backgroundColor: AppColors.black,
+            appBar: AppBar(
+              backgroundColor: AppColors.cardDark,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
+              title: const Text('Delivery Details', style: TextStyle(color: Colors.white)),
+            ),
+            body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        // Get the updated delivery data
+        final updatedDelivery = DeliveryModel.fromFirestore(snapshot.data!);
+
+        return Scaffold(
+          backgroundColor: AppColors.black,
+          appBar: AppBar(
+            backgroundColor: AppColors.cardDark,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: const Text(
+              'Delivery Details',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.my_location, color: Colors.white),
+                onPressed: () {
+                  if (_currentPosition != null) {
+                    _mapController.move(
+                      LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
                   15,
                 );
               }
@@ -173,28 +232,30 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            _buildMap(),
-            _buildDeliveryInfo(context),
+            _buildMap(updatedDelivery),
+            _buildDeliveryInfo(context, updatedDelivery),
             _buildLocations(),
             _buildPackageInfo(),
             _buildRecipientInfo(context),
-            if (widget.delivery.specialInstructions != null) _buildSpecialInstructions(),
+            if (updatedDelivery.specialInstructions != null) _buildSpecialInstructions(),
             const SizedBox(height: 20),
           ],
         ),
       ),
       bottomNavigationBar: _buildActionButtons(context),
     );
+      },
+    );
   }
 
-  Widget _buildMap() {
+  Widget _buildMap(DeliveryModel delivery) {
     final pickupLatLng = LatLng(
-      widget.delivery.pickupLocation.latitude,
-      widget.delivery.pickupLocation.longitude,
+      delivery.pickupLocation.latitude,
+      delivery.pickupLocation.longitude,
     );
     final dropoffLatLng = LatLng(
-      widget.delivery.deliveryLocation.latitude,
-      widget.delivery.deliveryLocation.longitude,
+      delivery.deliveryLocation.latitude,
+      delivery.deliveryLocation.longitude,
     );
 
     // Calculate center and zoom to show both points
@@ -395,9 +456,9 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
     return '${km.toStringAsFixed(1)} km';
   }
 
-  Widget _buildDeliveryInfo(BuildContext context) {
-    Color statusColor = _getStatusColor(widget.delivery.status);
-    String statusText = _getStatusText(widget.delivery.status);
+  Widget _buildDeliveryInfo(BuildContext context, DeliveryModel delivery) {
+    Color statusColor = _getStatusColor(delivery.status);
+    String statusText = _getStatusText(delivery.status);
 
     return Container(
       margin: const EdgeInsets.all(20),
@@ -1224,15 +1285,15 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
           .collection('deliveries')
           .doc(widget.delivery.id)
           .update({
-        'status': 'delivered',
+        'status': 'awaiting_confirmation',
         'deliveredAt': Timestamp.now(),
       });
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Delivery completed! Payment will be added to your wallet.'),
-            backgroundColor: Colors.green,
+            content: Text('Delivery marked as complete! Waiting for business confirmation.'),
+            backgroundColor: Colors.orange,
             duration: Duration(seconds: 3),
           ),
         );
@@ -1376,6 +1437,47 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
   Future<void> _updateStatus(BuildContext context, DeliveryStatus newStatus) async {
     try {
+      // Open Google Maps BEFORE updating status
+      if (newStatus == DeliveryStatus.pickedUp) {
+        // Navigate to pickup location
+        final pickupLat = widget.delivery.pickupLocation.latitude;
+        final pickupLng = widget.delivery.pickupLocation.longitude;
+        
+        // Get current position or use approximate location
+        double startLat = pickupLat;
+        double startLng = pickupLng;
+        
+        if (_currentPosition != null) {
+          startLat = _currentPosition!.latitude;
+          startLng = _currentPosition!.longitude;
+        }
+        
+        // Open Google Maps for navigation to pickup point
+        await _openGoogleMapsNavigation(
+          startLat,
+          startLng,
+          pickupLat,
+          pickupLng,
+          widget.delivery.pickupLocation.address,
+        );
+      } else if (newStatus == DeliveryStatus.inTransit) {
+        // Navigate to delivery location
+        final deliveryLat = widget.delivery.deliveryLocation.latitude;
+        final deliveryLng = widget.delivery.deliveryLocation.longitude;
+        final pickupLat = widget.delivery.pickupLocation.latitude;
+        final pickupLng = widget.delivery.pickupLocation.longitude;
+        
+        // Open Google Maps for navigation from pickup to delivery
+        await _openGoogleMapsNavigation(
+          pickupLat,
+          pickupLng,
+          deliveryLat,
+          deliveryLng,
+          widget.delivery.deliveryLocation.address,
+        );
+      }
+      
+      // Now update the status in Firestore
       Map<String, dynamic> updateData = {'status': _statusToString(newStatus)};
       
       if (newStatus == DeliveryStatus.pickedUp) {
@@ -1390,10 +1492,19 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
           .update(updateData);
 
       if (context.mounted) {
+        String message = 'Delivery status updated to ${_getStatusText(newStatus)}';
+        
+        if (newStatus == DeliveryStatus.pickedUp) {
+          message = 'Google Maps opened! Navigate to pickup point.';
+        } else if (newStatus == DeliveryStatus.inTransit) {
+          message = 'Google Maps opened! Navigate to delivery location.';
+        }
+        
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Delivery status updated to ${_getStatusText(newStatus)}'),
+            content: Text(message),
             backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
           ),
         );
         
@@ -1423,6 +1534,8 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
         return 'pickedUp';
       case DeliveryStatus.inTransit:
         return 'inTransit';
+      case DeliveryStatus.awaiting_confirmation:
+        return 'awaiting_confirmation';
       case DeliveryStatus.delivered:
         return 'delivered';
       case DeliveryStatus.cancelled:
@@ -1440,6 +1553,8 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
         return Colors.purple;
       case DeliveryStatus.inTransit:
         return AppColors.accent;
+      case DeliveryStatus.awaiting_confirmation:
+        return Colors.amber;
       case DeliveryStatus.delivered:
         return Colors.green;
       case DeliveryStatus.cancelled:
@@ -1457,6 +1572,8 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
         return 'PICKED UP';
       case DeliveryStatus.inTransit:
         return 'IN TRANSIT';
+      case DeliveryStatus.awaiting_confirmation:
+        return 'AWAITING CONFIRMATION';
       case DeliveryStatus.delivered:
         return 'DELIVERED';
       case DeliveryStatus.cancelled:

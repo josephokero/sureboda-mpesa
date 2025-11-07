@@ -5,6 +5,7 @@ enum DeliveryStatus {
   accepted,
   pickedUp,
   inTransit,
+  awaiting_confirmation,
   delivered,
   cancelled
 }
@@ -113,6 +114,8 @@ class DeliveryModel {
           return DeliveryStatus.pickedUp;
         case 'inTransit':
           return DeliveryStatus.inTransit;
+        case 'awaiting_confirmation':
+          return DeliveryStatus.awaiting_confirmation;
         case 'delivered':
           return DeliveryStatus.delivered;
         case 'cancelled':
@@ -164,6 +167,8 @@ class DeliveryModel {
           return 'pickedUp';
         case DeliveryStatus.inTransit:
           return 'inTransit';
+        case DeliveryStatus.awaiting_confirmation:
+          return 'awaiting_confirmation';
         case DeliveryStatus.delivered:
           return 'delivered';
         case DeliveryStatus.cancelled:

@@ -1,17 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../models/user_model.dart';
-import '../../models/delivery_model.dart';
-import '../../utils/theme.dart';
-import '../../services/auth_service.dart';
-import 'create_delivery_screen.dart';
-import 'track_delivery_screen.dart';
-import 'payment_history_screen.dart';
-import 'business_settings_screen.dart';
-import 'wallet_topup_screen.dart';
-
-import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import '../../models/user_model.dart';
 import '../../models/delivery_model.dart';
 import '../../utils/theme.dart';
@@ -23,6 +12,7 @@ import 'payment_history_screen.dart';
 import 'business_settings_screen.dart';
 import 'wallet_topup_screen.dart';
 import 'active_riders_screen.dart';
+import 'delivery_confirmation_screen.dart';
 
 class BusinessHomeScreen extends StatefulWidget {
   final UserModel user;
@@ -902,6 +892,49 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
               ],
             ),
           ],
+          if (delivery.status == DeliveryStatus.awaiting_confirmation) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () async {
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DeliveryConfirmationScreen(
+                        delivery: delivery,
+                        business: widget.user,
+                      ),
+                    ),
+                  );
+                  if (result == true) {
+                    // Delivery confirmed, refresh the list
+                    setState(() {});
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.black, size: 20),
+                    SizedBox(width: 8),
+                    Text(
+                      'CONFIRM DELIVERY',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     ),
@@ -909,60 +942,340 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
   }
 
   Widget _buildOrdersTab() {
-    return SafeArea(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Image.asset(
-                  'assets/images/logosureboda.jpg',
-                  width: 40,
-                  height: 40,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Icon(Icons.store, color: AppColors.accent, size: 40);
-                  },
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'All Orders',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+    return DefaultTabController(
+      length: 2,
+      child: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Image.asset(
+                    'assets/images/logosureboda.jpg',
+                    width: 40,
+                    height: 40,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Icon(Icons.store, color: AppColors.accent, size: 40);
+                    },
                   ),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'My Deliveries',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 20),
+              decoration: BoxDecoration(
+                color: AppColors.cardDark,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: TabBar(
+                indicator: BoxDecoration(
+                  color: AppColors.accent,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              ],
+                indicatorSize: TabBarIndicatorSize.tab,
+                dividerColor: Colors.transparent,
+                labelColor: Colors.black,
+                unselectedLabelColor: Colors.white.withOpacity(0.6),
+                labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                tabs: const [
+                  Tab(text: 'Ongoing'),
+                  Tab(text: 'History'),
+                ],
+              ),
             ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _buildOngoingDeliveriesList(),
+                  _buildBusinessDeliveryHistoryList(),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOngoingDeliveriesList() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('deliveries')
+          .where('businessId', isEqualTo: widget.user.uid)
+          .where('status', whereIn: ['pending', 'accepted', 'pickedUp', 'inTransit', 'awaiting_confirmation'])
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return _buildEmptyOrdersState(
+            icon: Icons.local_shipping_outlined,
+            title: 'No Ongoing Deliveries',
+            subtitle: 'Your active deliveries will appear here',
+          );
+        }
+
+        final deliveries = snapshot.data!.docs
+            .map((doc) => DeliveryModel.fromFirestore(doc))
+            .toList();
+
+        // Sort by status priority: inTransit > pickedUp > accepted > pending
+        deliveries.sort((a, b) {
+          final priorityA = a.status == DeliveryStatus.inTransit ? 0 : 
+                           a.status == DeliveryStatus.pickedUp ? 1 : 
+                           a.status == DeliveryStatus.accepted ? 2 : 3;
+          final priorityB = b.status == DeliveryStatus.inTransit ? 0 : 
+                           b.status == DeliveryStatus.pickedUp ? 1 : 
+                           b.status == DeliveryStatus.accepted ? 2 : 3;
+          return priorityA.compareTo(priorityB);
+        });
+
+        return RefreshIndicator(
+          onRefresh: () async {
+            await Future.delayed(const Duration(milliseconds: 500));
+          },
+          color: AppColors.accent,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            itemCount: deliveries.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              return _buildDeliveryCard(deliveries[index], context);
+            },
           ),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('deliveries')
-                  .where('businessId', isEqualTo: widget.user.uid)
-                  .orderBy('createdAt', descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+        );
+      },
+    );
+  }
 
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return _buildEmptyState();
-                }
+  Widget _buildBusinessDeliveryHistoryList() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('deliveries')
+          .where('businessId', isEqualTo: widget.user.uid)
+          .where('status', whereIn: ['delivered', 'cancelled'])
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-                return ListView.separated(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  itemCount: snapshot.data!.docs.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
-                    final delivery = DeliveryModel.fromFirestore(snapshot.data!.docs[index]);
-                    return _buildDeliveryCard(delivery, context);
-                  },
-                );
-              },
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return _buildEmptyOrdersState(
+            icon: Icons.history,
+            title: 'No Delivery History',
+            subtitle: 'Completed deliveries will appear here',
+          );
+        }
+
+        final deliveries = snapshot.data!.docs
+            .map((doc) => DeliveryModel.fromFirestore(doc))
+            .toList();
+
+        // Sort by date, newest first
+        deliveries.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+        return RefreshIndicator(
+          onRefresh: () async {
+            await Future.delayed(const Duration(milliseconds: 500));
+          },
+          color: AppColors.accent,
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            itemCount: deliveries.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+              return _buildBusinessHistoryCard(deliveries[index], context);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptyOrdersState({required IconData icon, required String title, required String subtitle}) {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: AppColors.cardDark,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 64, color: AppColors.accent.withOpacity(0.5)),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
             ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBusinessHistoryCard(DeliveryModel delivery, BuildContext context) {
+    Color statusColor = _getStatusColor(delivery.status);
+    String statusText = _getStatusText(delivery.status);
+    Color paymentStatusColor = _getPaymentStatusColor(delivery.paymentStatus ?? 'pending');
+    String paymentStatusText = _getPaymentStatusText(delivery.paymentStatus ?? 'pending');
+    final dateFormat = DateFormat('MMM dd, yyyy - HH:mm');
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.cardDark,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: statusColor.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      delivery.recipientName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      delivery.recipientPhone,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.6),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: statusColor.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      statusText,
+                      style: TextStyle(
+                        color: statusColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: paymentStatusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: paymentStatusColor.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      paymentStatusText,
+                      style: TextStyle(
+                        color: paymentStatusColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(Icons.location_on_outlined, size: 16, color: Colors.white.withOpacity(0.6)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  delivery.deliveryLocation.address,
+                  style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Icon(Icons.access_time, size: 16, color: Colors.white.withOpacity(0.6)),
+              const SizedBox(width: 6),
+              Text(
+                dateFormat.format(delivery.createdAt),
+                style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'KSH ${delivery.deliveryFee.toStringAsFixed(0)}',
+                style: TextStyle(
+                  color: AppColors.accent,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              OutlinedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => TrackDeliveryScreen(deliveryId: delivery.id),
+                    ),
+                  );
+                },
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: AppColors.accent.withOpacity(0.5)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
+                child: Text(
+                  'View Details',
+                  style: TextStyle(color: AppColors.accent, fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1079,6 +1392,8 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
         return Colors.purple;
       case DeliveryStatus.inTransit:
         return AppColors.accent;
+      case DeliveryStatus.awaiting_confirmation:
+        return Colors.amber;
       case DeliveryStatus.delivered:
         return Colors.green;
       case DeliveryStatus.cancelled:
@@ -1126,6 +1441,8 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
         return 'PICKED UP';
       case DeliveryStatus.inTransit:
         return 'IN TRANSIT';
+      case DeliveryStatus.awaiting_confirmation:
+        return 'CONFIRM DELIVERY';
       case DeliveryStatus.delivered:
         return 'DELIVERED';
       case DeliveryStatus.cancelled:
@@ -1143,6 +1460,8 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
         return Icons.inventory_2_outlined;
       case DeliveryStatus.inTransit:
         return Icons.local_shipping_outlined;
+      case DeliveryStatus.awaiting_confirmation:
+        return Icons.pending_actions;
       case DeliveryStatus.delivered:
         return Icons.done_all;
       case DeliveryStatus.cancelled:

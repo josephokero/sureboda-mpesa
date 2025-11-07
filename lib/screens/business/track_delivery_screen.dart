@@ -541,6 +541,8 @@ class TrackDeliveryScreen extends StatelessWidget {
         return Colors.purple;
       case DeliveryStatus.inTransit:
         return AppColors.accent;
+      case DeliveryStatus.awaiting_confirmation:
+        return Colors.amber;
       case DeliveryStatus.delivered:
         return Colors.green;
       case DeliveryStatus.cancelled:
@@ -558,6 +560,8 @@ class TrackDeliveryScreen extends StatelessWidget {
         return 'PICKED UP';
       case DeliveryStatus.inTransit:
         return 'IN TRANSIT';
+      case DeliveryStatus.awaiting_confirmation:
+        return 'AWAITING CONFIRMATION';
       case DeliveryStatus.delivered:
         return 'DELIVERED';
       case DeliveryStatus.cancelled:
