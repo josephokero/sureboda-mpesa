@@ -1,0 +1,472 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================================================
+    // HELPER FUNCTIONS (shared by both projects)
+    // ============================================================================
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function isSuperAdmin() {
+      return request.auth.token.email == 'tunezken@gmail.com';
+    }
+    
+    // SUREBODA-specific role checks
+    function isBusiness() {
+      return isSignedIn() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'business';
+    }
+    
+    function isRider() {
+      return isSignedIn() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'rider';
+    }
+    
+    function isSureBodaAdmin() {
+      return isSignedIn() && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // Other project role check
+    function isCompanyAdmin() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    // ============================================================================
+    // USERS COLLECTION (COMBINED - handles both projects)
+    // ============================================================================
+    
+    match /users/{userId} {
+      // Allow read if signed in
+      allow read: if isSignedIn();
+      
+      // Allow create for:
+      // 1. SUREBODA: New users with business/rider role
+      // 2. Other project: Any authenticated user
+      allow create: if isSignedIn() && 
+                      isOwner(userId) &&
+                      (request.resource.data.role in ['business', 'rider', 'admin', 'user']);
+      
+      // Allow update by owner (SUREBODA balance protection applied)
+      allow update: if isOwner(userId) &&
+                      // Cannot manually change balance for SUREBODA riders/businesses
+                      (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['balance']) ||
+                       isSureBodaAdmin() || isCompanyAdmin());
+      
+      // Riders can update online status (SUREBODA feature)
+      allow update: if isOwner(userId) &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isOnline', 'lastSeen']);
+      
+      // Allow admins to read/update any user
+      allow read, update: if isCompanyAdmin() || isSureBodaAdmin();
+      
+      // Prevent deletion
+      allow delete: if false;
+      
+      // User subcollections (from other project)
+      match /{subCollection}/{docId} {
+        allow read, write: if isOwner(userId) ||
+                             isCompanyAdmin() ||
+                             isSureBodaAdmin();
+      }
+    }
+    
+    // ============================================================================
+    // SUREBODA DELIVERY APP COLLECTIONS
+    // ============================================================================
+    
+    // Deliveries collection
+    match /deliveries/{deliveryId} {
+      allow read: if isSignedIn();
+      
+      allow create: if isBusiness() &&
+                      request.resource.data.businessId == request.auth.uid &&
+                      request.resource.data.status == 'pending' &&
+                      request.resource.data.deliveryFee > 0 &&
+                      request.resource.data.isPaid == true;
+      
+      allow update: if isBusiness() &&
+                      resource.data.businessId == request.auth.uid &&
+                      resource.data.status == 'pending';
+      
+      allow update: if isRider() &&
+                      resource.data.status == 'pending' &&
+                      request.resource.data.riderId == request.auth.uid &&
+                      request.resource.data.status == 'accepted';
+      
+      allow update: if isRider() &&
+                      resource.data.riderId == request.auth.uid &&
+                      resource.data.status in ['accepted', 'pickedUp', 'inTransit'];
+      
+      allow update: if isRider() &&
+                      resource.data.riderId == request.auth.uid &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['riderCurrentLocation']);
+      
+      allow update: if isBusiness() &&
+                      resource.data.businessId == request.auth.uid &&
+                      resource.data.status == 'delivered' &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasAny(['businessRating', 'businessReview']);
+      
+      allow update: if isRider() &&
+                      resource.data.riderId == request.auth.uid &&
+                      resource.data.status == 'delivered' &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasAny(['riderRating', 'riderReview']);
+      
+      allow delete: if isSureBodaAdmin();
+      
+      // Chat messages subcollection
+      match /messages/{messageId} {
+        allow read: if isSignedIn() &&
+                     (get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.businessId == request.auth.uid ||
+                      get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.riderId == request.auth.uid);
+        
+        allow create: if isSignedIn() &&
+                       (get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.businessId == request.auth.uid ||
+                        get(/databases/$(database)/documents/deliveries/$(deliveryId)).data.riderId == request.auth.uid) &&
+                       request.resource.data.senderId == request.auth.uid;
+        
+        allow update: if isSignedIn() &&
+                       resource.data.senderId == request.auth.uid;
+        
+        allow delete: if isSignedIn() &&
+                       (resource.data.senderId == request.auth.uid || isSureBodaAdmin());
+      }
+    }
+    
+    // Notifications collection (SUREBODA)
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() &&
+                    (resource.data.userId == request.auth.uid ||
+                     resource.data.riderId == request.auth.uid);
+      
+      allow create: if isSureBodaAdmin() ||
+                      (isBusiness() && request.resource.data.type == 'new_delivery');
+      
+      allow update: if isSignedIn() &&
+                      (resource.data.userId == request.auth.uid ||
+                       resource.data.riderId == request.auth.uid) &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead']);
+      
+      allow delete: if isSignedIn() &&
+                      (resource.data.userId == request.auth.uid ||
+                       resource.data.riderId == request.auth.uid);
+    }
+    
+    // Reviews/Ratings collection (SUREBODA)
+    match /reviews/{reviewId} {
+      allow read: if isSignedIn();
+      
+      allow create: if isSignedIn() &&
+                      request.resource.data.reviewerId == request.auth.uid;
+      
+      allow update: if isSignedIn() &&
+                      resource.data.reviewerId == request.auth.uid;
+      
+      allow delete: if isSignedIn() &&
+                      resource.data.reviewerId == request.auth.uid;
+    }
+    
+    // ============================================================================
+    // TRANSACTIONS & WITHDRAWALS (COMBINED - handles both projects)
+    // ============================================================================
+    
+    // Transactions collection - SECURE VERSION
+    match /transactions/{transactionId} {
+      // Users can read their own transactions
+      allow read: if isSignedIn() &&
+                    resource.data.userId == request.auth.uid;
+      
+      // Admins can read all
+      allow read: if isCompanyAdmin() || isSureBodaAdmin();
+      
+      // Only system/Cloud Functions can create (SUREBODA requirement)
+      // OR allow M-Pesa callbacks (other project requirement)
+      allow create: if true; // For M-Pesa callbacks
+      
+      // No manual updates or deletes
+      allow update: if false;
+      allow delete: if false;
+    }
+    
+    // Payroll transactions subcollection (other project)
+    match /payroll/{userId}/transactions/{docId} {
+      allow read: if isOwner(userId) || isCompanyAdmin();
+      allow create, write: if true; // For M-Pesa callbacks
+    }
+    
+    // Withdrawals collection - SECURE VERSION (SUREBODA rules take precedence)
+    match /withdrawals/{withdrawalId} {
+      // Users can read their own withdrawals
+      allow read: if isSignedIn() &&
+                    resource.data.userId == request.auth.uid;
+      
+      // Riders (SUREBODA) can create withdrawal requests
+      allow create: if isRider() &&
+                      request.resource.data.userId == request.auth.uid &&
+                      request.resource.data.status == 'pending';
+      
+      // Any authenticated user (other project) can create
+      allow create: if isSignedIn() &&
+                      request.resource.data.userId == request.auth.uid;
+      
+      // Only admins can approve/reject
+      allow update: if isCompanyAdmin() || isSureBodaAdmin();
+      
+      // No deletes
+      allow delete: if false;
+    }
+    
+    // ============================================================================
+    // OTHER PROJECT COLLECTIONS (Bike Rental / Payroll System)
+    // ============================================================================
+    
+    // Admins collection
+    match /admins/{userId} {
+      allow read, write: if isOwner(userId) || isSuperAdmin();
+    }
+    
+    match /admins/{document=**} {
+      allow list: if isSignedIn();
+    }
+    
+    // Money tracking
+    match /money/{moneyId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    // Help center
+    match /helpcenter/{requestId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    // Emergency issues
+    match /emergency_issues/{requestId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    // Service requests
+    match /service_requests/{requestId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    // Applications
+    match /applications/{docId} {
+      allow create: if true;
+      allow read, update, delete: if isCompanyAdmin();
+    }
+    
+    // Payroll
+    match /payroll/{docId} {
+      allow read, write: if isCompanyAdmin();
+      allow read: if isOwner(docId);
+    }
+    
+    // Subscribe
+    match /subscribe/{docId} {
+      allow create: if true;
+      allow read, update, delete: if isCompanyAdmin();
+    }
+    
+    // User payments
+    match /users/{userId}/payments/{paymentId} {
+      allow read, write: if isOwner(userId) || isCompanyAdmin();
+    }
+    
+    // Contacting
+    match /contacting/{docId} {
+      allow create: if true;
+      allow read, update, delete: if isCompanyAdmin();
+    }
+    
+    // Assigned bikes
+    match /users/{userId}/assignedBike/{docId} {
+      allow read: if isOwner(userId);
+      allow write: if isCompanyAdmin();
+    }
+    
+    // Red book
+    match /redbook/{redId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    // Companies and employees
+    match /companies/{companyId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+      
+      match /employees/{employeeId} {
+        allow create, read, update, delete: if isSignedIn();
+        
+        match /salaries/{salaryId} {
+          allow create, read, update, delete: if isSignedIn();
+        }
+      }
+      
+      match /contracts/{contractId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+    
+    // Financial collections
+    match /savings/{savingsId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    match /investments/{investmentId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    match /futurenotes/{noteId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    match /spendings/{spendingId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    match /wealths/{wealthId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    match /saves/{saveId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    match /achievements/{achievementId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    match /notebook/{noteId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    match /budgets/{budgetId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    match /bankAccounts/{bankId} {
+      allow read, write: if isSignedIn();
+    }
+    
+    match /oweAstute/{loanId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    match /companyloan/{loanId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+    }
+    
+    // Payments (with subadmin permissions)
+    match /payments/{paymentId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+      
+      allow read, write: if isSignedIn() &&
+        exists(/databases/$(database)/documents/subadmins/$(request.auth.uid)) &&
+        'payments' in get(/databases/$(database)/documents/subadmins/$(request.auth.uid)).data.permissions;
+    }
+    
+    // Loans (with subadmin permissions)
+    match /loans/{loanId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+      
+      allow read, write: if isSignedIn() &&
+        exists(/databases/$(database)/documents/subadmins/$(request.auth.uid)) &&
+        'loans' in get(/databases/$(database)/documents/subadmins/$(request.auth.uid)).data.permissions;
+    }
+    
+    // Riders (bike rental, not SUREBODA riders)
+    match /riders/{riderId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+      
+      allow read, write: if isSignedIn() &&
+        exists(/databases/$(database)/documents/subadmins/$(request.auth.uid)) &&
+        'riders' in get(/databases/$(database)/documents/subadmins/$(request.auth.uid)).data.permissions;
+    }
+    
+    // Artists
+    match /artists/{artistId} {
+      allow read, write: if isSignedIn();
+      
+      allow read, write: if isSignedIn() &&
+        exists(/databases/$(database)/documents/subadmins/$(request.auth.uid)) &&
+        'artists' in get(/databases/$(database)/documents/subadmins/$(request.auth.uid)).data.permissions;
+    }
+    
+    // Bikes
+    match /bikes/{bikeId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+      
+      allow read, write: if isSignedIn() &&
+        exists(/databases/$(database)/documents/subadmins/$(request.auth.uid)) &&
+        'bikes' in get(/databases/$(database)/documents/subadmins/$(request.auth.uid)).data.permissions;
+    }
+    
+    // Assignments
+    match /assignments/{assignmentId} {
+      allow create, read, update: if isSignedIn();
+      allow delete: if isCompanyAdmin();
+      
+      allow read, write: if isSignedIn() &&
+        exists(/databases/$(database)/documents/subadmins/$(request.auth.uid)) &&
+        'assignments' in get(/databases/$(database)/documents/subadmins/$(request.auth.uid)).data.permissions;
+    }
+    
+    // Reports
+    match /reports/{docId} {
+      allow read, write: if isSignedIn() &&
+        exists(/databases/$(database)/documents/subadmins/$(request.auth.uid)) &&
+        'reports' in get(/databases/$(database)/documents/subadmins/$(request.auth.uid)).data.permissions;
+    }
+    
+    // Subadmins
+    match /subadmins/{userId} {
+      allow read: if isSuperAdmin() || isOwner(userId);
+      allow write: if isSuperAdmin();
+    }
+    
+    // ============================================================================
+    // SHARED ADMIN COLLECTIONS
+    // ============================================================================
+    
+    // Analytics
+    match /analytics/{document=**} {
+      allow read: if isCompanyAdmin() || isSureBodaAdmin();
+      allow write: if isCompanyAdmin() || isSureBodaAdmin();
+    }
+    
+    // App settings
+    match /settings/{document=**} {
+      allow read: if isSignedIn();
+      allow write: if isCompanyAdmin() || isSureBodaAdmin();
+    }
+  }
+}

@@ -1,0 +1,106 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isValidImage() {
+      return request.resource.size < 5 * 1024 * 1024 // 5MB max
+             && request.resource.contentType.matches('image/.*');
+    }
+    
+    function isValidDocument() {
+      return request.resource.size < 10 * 1024 * 1024 // 10MB max
+             && request.resource.contentType.matches('(image/.*|application/pdf)');
+    }
+    
+    // Profile pictures
+    match /profile_pictures/{userId}/{fileName} {
+      // Anyone can read profile pictures
+      allow read: if true;
+      
+      // Users can upload their own profile picture
+      allow write: if isSignedIn() &&
+                     isOwner(userId) &&
+                     isValidImage();
+      
+      // Users can delete their own profile picture
+      allow delete: if isSignedIn() &&
+                      isOwner(userId);
+    }
+    
+    // Delivery photos (package photos, proof of delivery)
+    match /delivery_photos/{deliveryId}/{fileName} {
+      // Delivery participants can read
+      allow read: if isSignedIn();
+      
+      // Riders and businesses involved can upload photos
+      allow write: if isSignedIn() &&
+                     isValidImage();
+      
+      // Only uploader or admin can delete
+      allow delete: if isSignedIn();
+    }
+    
+    // Business documents (licenses, permits)
+    match /business_documents/{userId}/{fileName} {
+      // Only the business owner can read their documents
+      allow read: if isSignedIn() &&
+                    isOwner(userId);
+      
+      // Business can upload their documents
+      allow write: if isSignedIn() &&
+                     isOwner(userId) &&
+                     isValidDocument();
+      
+      // Business can delete their documents
+      allow delete: if isSignedIn() &&
+                      isOwner(userId);
+    }
+    
+    // Rider documents (ID, license, vehicle registration)
+    match /rider_documents/{userId}/{fileName} {
+      // Only the rider can read their documents
+      allow read: if isSignedIn() &&
+                    isOwner(userId);
+      
+      // Rider can upload their documents
+      allow write: if isSignedIn() &&
+                     isOwner(userId) &&
+                     isValidDocument();
+      
+      // Rider can delete their documents
+      allow delete: if isSignedIn() &&
+                      isOwner(userId);
+    }
+    
+    // Chat media (images sent in chat)
+    match /chat_media/{deliveryId}/{fileName} {
+      // Delivery participants can read
+      allow read: if isSignedIn();
+      
+      // Delivery participants can upload
+      allow write: if isSignedIn() &&
+                     isValidImage();
+      
+      // Only uploader can delete
+      allow delete: if isSignedIn();
+    }
+    
+    // App assets (logos, banners - admin only)
+    match /app_assets/{fileName} {
+      // Everyone can read
+      allow read: if true;
+      
+      // Only admins can write
+      allow write: if false; // Use Firebase Console or Cloud Functions
+    }
+  }
+}
