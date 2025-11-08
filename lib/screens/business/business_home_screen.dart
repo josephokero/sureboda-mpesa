@@ -10,7 +10,6 @@ import 'create_delivery_steps_screen.dart';
 import 'track_delivery_screen.dart';
 import 'payment_history_screen.dart';
 import 'business_settings_screen.dart';
-import 'wallet_topup_screen.dart';
 import 'active_riders_screen.dart';
 import 'delivery_confirmation_screen.dart';
 
@@ -46,8 +45,6 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
           children: [
             _buildHeader(),
             const SizedBox(height: 20),
-            _buildWalletCard(),
-            const SizedBox(height: 24),
             _buildStatsCards(),
             const SizedBox(height: 24),
             _buildQuickActions(),
@@ -228,145 +225,6 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildWalletCard() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(widget.user.uid)
-            .snapshots(),
-        builder: (context, snapshot) {
-          double walletBalance = widget.user.walletBalance;
-          double pendingBalance = widget.user.pendingBalance;
-          if (snapshot.hasData && snapshot.data!.exists) {
-            final data = snapshot.data!.data() as Map<String, dynamic>;
-            walletBalance = (data['walletBalance'] ?? 0.0).toDouble();
-            pendingBalance = (data['pendingBalance'] ?? 0.0).toDouble();
-          }
-          double availableBalance = walletBalance - pendingBalance;
-
-          return InkWell(
-            onTap: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => WalletTopUpScreen(user: widget.user),
-                ),
-              );
-              if (result == true) {
-                setState(() {}); // Refresh to show updated balance
-              }
-            },
-            child: Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppColors.accent,
-                    AppColors.accent.withOpacity(0.7),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.accent.withOpacity(0.3),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.account_balance_wallet,
-                      color: Colors.white,
-                      size: 32,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Wallet Balance',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'KSH ${walletBalance.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if (pendingBalance > 0) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            '- KSH ${pendingBalance.toStringAsFixed(2)} (Pending)',
-                            style: const TextStyle(
-                              color: Colors.red,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 4),
-                        Text(
-                          'Available: KSH ${availableBalance.toStringAsFixed(2)}',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.9),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.add, color: Colors.black, size: 18),
-                        SizedBox(width: 4),
-                        Text(
-                          'Top Up',
-                          style: TextStyle(
-                            color: Colors.black,
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
       ),
     );
   }

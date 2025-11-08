@@ -145,9 +145,12 @@ class DeliveryService {
         'deliveredAt': FieldValue.serverTimestamp(),
       });
 
-      // Update rider's balance
+      // Calculate 20% commission
+      double commission = delivery.deliveryFee * 0.20;
+
+      // Add commission to rider's debt (rider owes platform 20%)
       await _firestore.collection('users').doc(delivery.riderId).update({
-        'balance': FieldValue.increment(delivery.deliveryFee),
+        'commissionDebt': FieldValue.increment(commission),
       });
 
       // Update rider's stats

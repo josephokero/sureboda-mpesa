@@ -11,6 +11,7 @@ import 'delivery_details_screen.dart';
 import 'active_delivery_screen.dart';
 import 'withdrawal_screen.dart';
 import 'rider_settings_screen.dart';
+import '../business/wallet_topup_screen.dart';
 import 'dart:async';
 
 class RiderHomeScreen extends StatefulWidget {
@@ -45,7 +46,20 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
     if (!_isOnline) return;
 
     _notificationSubscription = DeliveryService.getRiderNotificationsStream(widget.user.id)
-        .listen((notifications) {
+        .listen((notifications) async {
+      // Check commission debt before showing notifications
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.user.uid)
+          .get();
+      
+      final commissionDebt = (userDoc.data()?['commissionDebt'] ?? 0.0) as double;
+      
+      // If debt >= 100, don't show new delivery notifications
+      if (commissionDebt >= 100) {
+        return; // Block notifications
+      }
+      
       for (var notification in notifications) {
         String notificationId = notification['id'];
         
@@ -659,11 +673,38 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
           .doc(widget.user.uid)
           .snapshots(),
       builder: (context, snapshot) {
-        double walletBalance = widget.user.walletBalance ?? 0.0;
+        double commissionDebt = widget.user.commissionDebt ?? 0.0;
         
         if (snapshot.hasData && snapshot.data!.exists) {
           final data = snapshot.data!.data() as Map<String, dynamic>?;
-          walletBalance = (data?['walletBalance'] ?? 0.0).toDouble();
+          commissionDebt = (data?['commissionDebt'] ?? 0.0).toDouble();
+        }
+
+        // Determine card color based on debt amount
+        Color cardColor1 = AppColors.accent;
+        Color cardColor2 = AppColors.accent.withOpacity(0.7);
+        Color textColor = Colors.black;
+        
+        if (commissionDebt >= 100) {
+          // RED - Locked
+          cardColor1 = Colors.red.shade700;
+          cardColor2 = Colors.red.shade500;
+          textColor = Colors.white;
+        } else if (commissionDebt >= 80) {
+          // ORANGE - Warning
+          cardColor1 = Colors.orange.shade600;
+          cardColor2 = Colors.orange.shade400;
+          textColor = Colors.black;
+        } else if (commissionDebt > 0) {
+          // YELLOW - Pending
+          cardColor1 = Colors.yellow.shade700;
+          cardColor2 = Colors.yellow.shade500;
+          textColor = Colors.black;
+        } else {
+          // GREEN - Good standing
+          cardColor1 = Colors.green.shade600;
+          cardColor2 = Colors.green.shade400;
+          textColor = Colors.white;
         }
 
         return Padding(
@@ -672,14 +713,14 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [AppColors.accent, AppColors.accent.withOpacity(0.7)],
+                colors: [cardColor1, cardColor2],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(20),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.accent.withOpacity(0.3),
+                  color: cardColor1.withOpacity(0.3),
                   blurRadius: 20,
                   offset: const Offset(0, 10),
                 ),
@@ -691,10 +732,10 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      'Available Balance',
+                    Text(
+                      commissionDebt >= 100 ? '⚠️ Account Suspended' : 'Commission Balance',
                       style: TextStyle(
-                        color: Colors.black87,
+                        color: textColor.withOpacity(0.9),
                         fontSize: 14,
                         fontWeight: FontWeight.w600,
                       ),
@@ -702,17 +743,17 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.1),
+                        color: textColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Row(
+                      child: Row(
                         children: [
-                          Icon(Icons.account_balance_wallet, color: Colors.black87, size: 14),
-                          SizedBox(width: 6),
+                          Icon(Icons.receipt_long, color: textColor, size: 14),
+                          const SizedBox(width: 6),
                           Text(
-                            'Wallet',
+                            commissionDebt >= 100 ? 'LOCKED' : commissionDebt >= 80 ? 'WARNING' : 'ACTIVE',
                             style: TextStyle(
-                              color: Colors.black87,
+                              color: textColor,
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
                             ),
@@ -724,27 +765,74 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'KSH ${walletBalance.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontSize: 36,
+                  commissionDebt > 0 ? 'You owe: KSH ${commissionDebt.toStringAsFixed(2)}' : 'KSH 0.00',
+                  style: TextStyle(
+                    color: textColor,
+                    fontSize: 32,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                if (commissionDebt >= 100) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Pay commission to receive new deliveries',
+                    style: TextStyle(
+                      color: textColor.withOpacity(0.9),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ] else if (commissionDebt >= 80) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Warning: Pay soon to avoid account suspension',
+                    style: TextStyle(
+                      color: textColor,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ] else if (commissionDebt > 0) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Pay commission to keep your account active',
+                    style: TextStyle(
+                      color: textColor.withOpacity(0.8),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ] else ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '✓ No commission owed - Good standing!',
+                    style: TextStyle(
+                      color: textColor.withOpacity(0.9),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 ElevatedButton(
-                  onPressed: walletBalance < 10 ? null : () {
-                    Navigator.push(
+                  onPressed: commissionDebt > 0 ? () async {
+                    final result = await Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => WithdrawalScreen(user: widget.user),
+                        builder: (context) => WalletTopUpScreen(
+                          user: widget.user,
+                          isCommissionPayment: true,
+                        ),
                       ),
                     );
-                  },
+                    if (result == true) {
+                      setState(() {}); // Refresh to show updated balance
+                    }
+                  } : null,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black,
-                    disabledBackgroundColor: Colors.black.withOpacity(0.3),
-                    foregroundColor: Colors.white,
+                    backgroundColor: textColor == Colors.white ? Colors.white : Colors.black,
+                    disabledBackgroundColor: textColor.withOpacity(0.3),
+                    foregroundColor: textColor == Colors.white ? Colors.black : Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
@@ -756,7 +844,7 @@ class _RiderHomeScreenState extends State<RiderHomeScreen> {
                       const Icon(Icons.payment, size: 20),
                       const SizedBox(width: 8),
                       Text(
-                        walletBalance < 10 ? 'Minimum KSH 10 to withdraw' : 'Withdraw to M-Pesa',
+                        commissionDebt > 0 ? 'Pay Commission via M-Pesa' : 'No Payment Needed',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,

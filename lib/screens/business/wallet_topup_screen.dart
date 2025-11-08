@@ -7,8 +7,13 @@ import '../../utils/theme.dart';
 
 class WalletTopUpScreen extends StatefulWidget {
   final UserModel user;
+  final bool isCommissionPayment; // If true, deduct from commission debt instead of adding to wallet
 
-  const WalletTopUpScreen({super.key, required this.user});
+  const WalletTopUpScreen({
+    super.key,
+    required this.user,
+    this.isCommissionPayment = false,
+  });
 
   @override
   State<WalletTopUpScreen> createState() => _WalletTopUpScreenState();
@@ -156,13 +161,24 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
         final transaction = snapshot.docs.first.data();
         
         if (transaction['status'] == 'completed') {
-          // Payment successful! Update wallet balance
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(widget.user.uid)
-              .update({
-            'walletBalance': FieldValue.increment(amount),
-          });
+          // Payment successful! Update wallet balance or commission debt
+          if (widget.isCommissionPayment) {
+            // Deduct from commission debt (for riders paying commission)
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(widget.user.uid)
+                .update({
+              'commissionDebt': FieldValue.increment(-amount), // Subtract the paid amount
+            });
+          } else {
+            // Add to wallet balance (for business top-ups)
+            await FirebaseFirestore.instance
+                .collection('users')
+                .doc(widget.user.uid)
+                .update({
+              'walletBalance': FieldValue.increment(amount),
+            });
+          }
 
           if (mounted) {
             // Close loading dialog
@@ -194,9 +210,11 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
                       style: const TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      '✅ Your wallet has been updated',
-                      style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
+                    Text(
+                      widget.isCommissionPayment 
+                        ? '✅ Commission payment received'
+                        : '✅ Your wallet has been updated',
+                      style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
                     ),
                   ],
                 ),
@@ -256,9 +274,9 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Top Up Wallet',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Text(
+          widget.isCommissionPayment ? 'Pay Commission' : 'Top Up Wallet',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
       body: SingleChildScrollView(
@@ -273,12 +291,20 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
                   .doc(widget.user.uid)
                   .snapshots(),
               builder: (context, snapshot) {
-                double currentBalance = widget.user.walletBalance;
+                double currentBalance = widget.isCommissionPayment 
+                    ? widget.user.commissionDebt 
+                    : widget.user.walletBalance;
                 
                 if (snapshot.hasData && snapshot.data!.exists) {
                   final data = snapshot.data!.data() as Map<String, dynamic>?;
-                  if (data != null && data.containsKey('walletBalance')) {
-                    currentBalance = (data['walletBalance'] ?? 0).toDouble();
+                  if (widget.isCommissionPayment) {
+                    if (data != null && data.containsKey('commissionDebt')) {
+                      currentBalance = (data['commissionDebt'] ?? 0).toDouble();
+                    }
+                  } else {
+                    if (data != null && data.containsKey('walletBalance')) {
+                      currentBalance = (data['walletBalance'] ?? 0).toDouble();
+                    }
                   }
                 }
 
@@ -302,16 +328,18 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
                   ),
                   child: Column(
                     children: [
-                      const Text(
-                        'Current Balance',
-                        style: TextStyle(
+                      Text(
+                        widget.isCommissionPayment ? 'Commission Owed' : 'Current Balance',
+                        style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 14,
                         ),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'KSH ${currentBalance.toStringAsFixed(2)}',
+                        widget.isCommissionPayment 
+                            ? 'KSH ${currentBalance.toStringAsFixed(2)}'
+                            : 'KSH ${currentBalance.toStringAsFixed(2)}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 36,
@@ -325,8 +353,10 @@ class _WalletTopUpScreenState extends State<WalletTopUpScreen> {
                           color: Colors.white.withOpacity(0.2),
                           borderRadius: BorderRadius.circular(20),
                         ),
-                        child: const Text(
-                          '💰 Available for Deliveries',
+                        child: Text(
+                          widget.isCommissionPayment 
+                              ? '📋 Pay to unlock deliveries'
+                              : '💰 Available for Deliveries',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 12,

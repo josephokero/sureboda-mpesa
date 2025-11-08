@@ -14,6 +14,7 @@ class UserModel {
   final String? profileImage;
   final double walletBalance;
   final double pendingBalance; // Money reserved for ongoing deliveries
+  final double commissionDebt; // Amount rider owes to platform (20% of deliveries)
   final bool active;
   final DateTime createdAt;
   final String? vehicleType; // For riders
@@ -37,6 +38,7 @@ class UserModel {
     this.profileImage,
     this.walletBalance = 0.0,
     this.pendingBalance = 0.0,
+    this.commissionDebt = 0.0,
     this.active = true,
     required this.createdAt,
     this.vehicleType,
@@ -73,6 +75,7 @@ class UserModel {
       profileImage: data['profileImage'],
       walletBalance: (data['walletBalance'] ?? 0.0).toDouble(),
       pendingBalance: (data['pendingBalance'] ?? 0.0).toDouble(),
+      commissionDebt: (data['commissionDebt'] ?? 0.0).toDouble(),
       active: data['active'] ?? true,
       createdAt: data['createdAt'] != null 
           ? (data['createdAt'] as Timestamp).toDate() 
@@ -107,6 +110,7 @@ class UserModel {
       'profileImage': profileImage,
       'walletBalance': walletBalance,
       'pendingBalance': pendingBalance,
+      'commissionDebt': commissionDebt,
       'active': active,
       'createdAt': Timestamp.fromDate(createdAt),
       'vehicleType': vehicleType,
