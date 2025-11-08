@@ -273,6 +273,251 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
   }
 
   Future<void> _completeDelivery() async {
+    // Step 1: Show payment received confirmation
+    bool? paymentReceived = await _showPaymentConfirmation();
+    
+    if (paymentReceived != true) return;
+
+    // Step 2: Mark delivery as complete
+    try {
+      await DeliveryService.completeDelivery(widget.delivery.id);
+      _stopLocationTracking();
+      
+      if (mounted) {
+        // Step 3: Show commission breakdown
+        await _showCommissionBreakdown();
+        
+        // Step 4: Show rating dialog
+        await _showRatingDialog();
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Delivery completed successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<bool?> _showPaymentConfirmation() async {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        title: Row(
+          children: [
+            Icon(
+              widget.delivery.paymentMethod == 'mpesa' ? Icons.phone_android : Icons.money,
+              color: AppColors.accent,
+              size: 28,
+            ),
+            const SizedBox(width: 12),
+            const Text('Receive Payment', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Have you received payment from the business?',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppColors.accent.withOpacity(0.2), AppColors.accent.withOpacity(0.1)],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.accent.withOpacity(0.3)),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'Amount to Receive',
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.7),
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'KSH ${widget.delivery.deliveryFee.toStringAsFixed(2)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 36,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          widget.delivery.paymentMethod == 'mpesa' ? Icons.phone_android : Icons.money,
+                          color: Colors.white.withOpacity(0.8),
+                          size: 14,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          widget.delivery.paymentMethod == 'mpesa' ? 'M-Pesa' : 'Cash',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.orange.shade400, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Only confirm after receiving the full payment',
+                      style: TextStyle(
+                        color: Colors.orange.shade200,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Not Yet', style: TextStyle(color: Colors.white70)),
+          ),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            ),
+            icon: const Icon(Icons.check_circle, size: 20),
+            label: const Text('Payment Received'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showCommissionBreakdown() async {
+    double commission = widget.delivery.deliveryFee * 0.20;
+    double netEarnings = widget.delivery.deliveryFee - commission;
+    
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        title: const Text('Earnings Breakdown', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildBreakdownRow('Delivery Fee', widget.delivery.deliveryFee, Colors.green),
+            const Divider(color: Colors.white24, height: 24),
+            _buildBreakdownRow('Platform Commission (20%)', -commission, Colors.orange),
+            const Divider(color: Colors.white24, height: 24),
+            _buildBreakdownRow('Commission Owed', commission, Colors.red, isBold: true),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.blue.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.blue.shade300, size: 18),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Pay commission via M-Pesa to keep receiving deliveries',
+                      style: TextStyle(
+                        color: Colors.blue.shade200,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Got It'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBreakdownRow(String label, double amount, Color color, {bool isBold = false}) {
+    bool isNegative = amount < 0;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.8),
+            fontSize: isBold ? 16 : 14,
+            fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+        Text(
+          '${isNegative ? '-' : ''}KSH ${amount.abs().toStringAsFixed(2)}',
+          style: TextStyle(
+            color: color,
+            fontSize: isBold ? 18 : 16,
+            fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _completeDeliveryOLD() async {
     bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(

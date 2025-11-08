@@ -40,6 +40,7 @@ class _CreateDeliveryStepsScreenState extends State<CreateDeliveryStepsScreen> {
   final _recipientNameController = TextEditingController();
   final _recipientPhoneController = TextEditingController();
   final _specialInstructionsController = TextEditingController();
+  String _paymentMethod = 'cash'; // 'cash' or 'mpesa'
   
   // Step 4: Schedule
   bool _isScheduled = false;
@@ -154,6 +155,7 @@ class _CreateDeliveryStepsScreenState extends State<CreateDeliveryStepsScreen> {
             ? _specialInstructionsController.text
             : null,
         scheduledFor: _isScheduled ? scheduledFor : null,
+        paymentMethod: _paymentMethod,
       );
 
       final docRef = await FirebaseFirestore.instance
@@ -748,7 +750,92 @@ class _CreateDeliveryStepsScreenState extends State<CreateDeliveryStepsScreen> {
           hint: 'Any special delivery notes...',
           maxLines: 4,
         ),
+        const SizedBox(height: 24),
+        const Text(
+          'Payment Method',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'How will you pay the rider after delivery?',
+          style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildPaymentMethodOption(
+                method: 'cash',
+                icon: Icons.money,
+                label: 'Cash',
+                description: 'Pay in cash',
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildPaymentMethodOption(
+                method: 'mpesa',
+                icon: Icons.phone_android,
+                label: 'M-Pesa',
+                description: 'Mobile money',
+              ),
+            ),
+          ],
+        ),
       ],
+    );
+  }
+
+  Widget _buildPaymentMethodOption({
+    required String method,
+    required IconData icon,
+    required String label,
+    required String description,
+  }) {
+    bool isSelected = _paymentMethod == method;
+    return GestureDetector(
+      onTap: () => setState(() => _paymentMethod = method),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.accent.withOpacity(0.2) : AppColors.cardDark,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? AppColors.accent : Colors.white.withOpacity(0.1),
+            width: 2,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? AppColors.accent : Colors.white.withOpacity(0.6),
+              size: 32,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? AppColors.accent : Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              description,
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.5),
+                fontSize: 11,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

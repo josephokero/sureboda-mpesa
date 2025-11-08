@@ -611,6 +611,33 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          widget.delivery.paymentMethod == 'mpesa' ? Icons.phone_android : Icons.money,
+                          color: Colors.black87,
+                          size: 14,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          widget.delivery.paymentMethod == 'mpesa' ? 'M-Pesa Payment' : 'Cash Payment',
+                          style: const TextStyle(
+                            color: Colors.black87,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
               Container(

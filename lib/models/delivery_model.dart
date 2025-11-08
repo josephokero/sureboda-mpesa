@@ -70,6 +70,7 @@ class DeliveryModel {
   final String? businessReview; // Business review of rider
   final double? riderRating; // Rider rates business (1-5)
   final String? riderReview; // Rider review of business
+  final String paymentMethod; // 'mpesa' or 'cash' - how business will pay rider
 
   DeliveryModel({
     required this.id,
@@ -99,6 +100,7 @@ class DeliveryModel {
     this.businessReview,
     this.riderRating,
     this.riderReview,
+    this.paymentMethod = 'cash',
   });
 
   factory DeliveryModel.fromFirestore(DocumentSnapshot doc) {
@@ -153,6 +155,7 @@ class DeliveryModel {
       businessReview: data['businessReview'],
       riderRating: data['riderRating']?.toDouble(),
       riderReview: data['riderReview'],
+      paymentMethod: data['paymentMethod'] ?? 'cash',
     );
   }
 
@@ -203,6 +206,7 @@ class DeliveryModel {
       'businessReview': businessReview,
       'riderRating': riderRating,
       'riderReview': riderReview,
+      'paymentMethod': paymentMethod,
     };
   }
 
@@ -241,6 +245,7 @@ class DeliveryModel {
       paymentStatus: paymentStatus ?? this.paymentStatus,
       paymentTransactionId: paymentTransactionId ?? this.paymentTransactionId,
       specialInstructions: specialInstructions,
+      paymentMethod: paymentMethod,
     );
   }
 }
