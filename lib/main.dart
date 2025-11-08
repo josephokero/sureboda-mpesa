@@ -4,6 +4,7 @@ import 'firebase_options.dart';
 import 'utils/theme.dart';
 import 'utils/constants.dart';
 import 'screens/auth/welcome_screen.dart';
+import 'screens/auth/auth_wrapper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,7 +26,11 @@ class MyApp extends StatelessWidget {
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
-      home: const WelcomeScreen(),
+      initialRoute: '/',
+      routes: {
+        '/': (context) => const AuthWrapper(), // Changed to AuthWrapper
+        '/welcome': (context) => const WelcomeScreen(),
+      },
     );
   }
 }

@@ -153,12 +153,57 @@ class _BusinessHomeScreenState extends State<BusinessHomeScreen> {
                     },
                   ),
                   PopupMenuItem(
-                    child: Text('Logout', style: TextStyle(color: Colors.red)),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.logout, color: Colors.red, size: 18),
+                        SizedBox(width: 8),
+                        Text('Logout', style: TextStyle(color: Colors.red)),
+                      ],
+                    ),
                     onTap: () async {
-                      await _authService.signOut();
-                      if (context.mounted) {
-                        Navigator.of(context).pushReplacementNamed('/welcome');
-                      }
+                      Future.delayed(Duration.zero, () async {
+                        // Show confirmation dialog
+                        bool? confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            backgroundColor: AppColors.cardDark,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            title: const Text(
+                              'Logout',
+                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                            ),
+                            content: const Text(
+                              'Are you sure you want to logout?',
+                              style: TextStyle(color: Colors.white70),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context, false),
+                                child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(context, true),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: const Text('Logout', style: TextStyle(color: Colors.white)),
+                              ),
+                            ],
+                          ),
+                        );
+                        
+                        if (confirm == true) {
+                          await _authService.signOut();
+                          if (context.mounted) {
+                            Navigator.of(context).pushNamedAndRemoveUntil('/welcome', (route) => false);
+                          }
+                        }
+                      });
                     },
                   ),
                 ],

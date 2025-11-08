@@ -95,6 +95,183 @@ class _ActiveDeliveryScreenState extends State<ActiveDeliveryScreen> {
     }
   }
 
+  Future<void> _abortDelivery() async {
+    // Show reason selection dialog
+    String? reason = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        title: const Text('Abort Delivery', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Please select a reason for aborting this delivery:',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            _buildReasonOption(context, 'Vehicle breakdown'),
+            _buildReasonOption(context, 'Emergency'),
+            _buildReasonOption(context, 'Wrong package'),
+            _buildReasonOption(context, 'Safety concerns'),
+            _buildReasonOption(context, 'Other'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (reason == null) return;
+
+    // If "Other" is selected, show text input
+    if (reason == 'Other') {
+      TextEditingController reasonController = TextEditingController();
+      String? customReason = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          title: const Text('Specify Reason', style: TextStyle(color: Colors.white)),
+          content: TextField(
+            controller: reasonController,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Enter reason...',
+              hintStyle: TextStyle(color: Colors.grey[600]),
+              filled: true,
+              fillColor: AppColors.black,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            maxLines: 3,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, reasonController.text),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+              ),
+              child: const Text('Submit'),
+            ),
+          ],
+        ),
+      );
+
+      if (customReason == null || customReason.trim().isEmpty) return;
+      reason = customReason;
+    }
+
+    // Confirm abort
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        title: const Text('Confirm Abort', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Are you sure you want to abort this delivery?\n\nReason: $reason\n\nNote: You will not receive payment for this delivery.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No, Go Back'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('Yes, Abort'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await DeliveryService.abortDelivery(widget.delivery.id, reason);
+        _stopLocationTracking();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Delivery aborted. Business has been notified and refunded.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Widget _buildReasonOption(BuildContext context, String reason) {
+    return InkWell(
+      onTap: () => Navigator.pop(context, reason),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: AppColors.black,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey[800]!),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              _getReasonIcon(reason),
+              color: Colors.white70,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              reason,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _getReasonIcon(String reason) {
+    switch (reason) {
+      case 'Vehicle breakdown':
+        return Icons.build;
+      case 'Emergency':
+        return Icons.emergency;
+      case 'Wrong package':
+        return Icons.inventory_2;
+      case 'Safety concerns':
+        return Icons.warning;
+      case 'Other':
+        return Icons.more_horiz;
+      default:
+        return Icons.info;
+    }
+  }
+
   Future<void> _completeDelivery() async {
     bool? confirm = await showDialog<bool>(
       context: context,

@@ -10,6 +10,7 @@ import '../../models/delivery_model.dart';
 import '../../models/user_model.dart';
 import '../../utils/theme.dart';
 import '../../services/location_service.dart';
+import '../../services/delivery_service.dart';
 import 'chat_screen.dart';
 
 class DeliveryDetailsScreen extends StatefulWidget {
@@ -36,6 +37,10 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
   @override
   void initState() {
     super.initState();
+    print('DeliveryDetailsScreen initialized');
+    print('Delivery ID: ${widget.delivery.id}');
+    print('Delivery Status: ${widget.delivery.status}');
+    print('Business Name: ${widget.delivery.businessName}');
     _initializeMap();
     _fetchRoute();
   }
@@ -179,13 +184,85 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // If delivery ID is null, show static view with the delivery data we have
+    if (widget.delivery.id == null || widget.delivery.id!.isEmpty) {
+      return Scaffold(
+        backgroundColor: AppColors.black,
+        appBar: AppBar(
+          backgroundColor: AppColors.cardDark,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: const Text(
+            'Delivery Details',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+        ),
+        body: SingleChildScrollView(
+          child: Column(
+            children: [
+              _buildMap(widget.delivery),
+              _buildDeliveryInfo(context, widget.delivery),
+              _buildLocations(),
+              _buildPackageInfo(),
+              _buildRecipientInfo(context),
+              if (widget.delivery.specialInstructions != null) _buildSpecialInstructions(),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+        bottomNavigationBar: _buildActionButtons(context),
+      );
+    }
+
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance
           .collection('deliveries')
           .doc(widget.delivery.id)
           .snapshots(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) {
+        // Handle errors
+        if (snapshot.hasError) {
+          return Scaffold(
+            backgroundColor: AppColors.black,
+            appBar: AppBar(
+              backgroundColor: AppColors.cardDark,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
+              title: const Text('Delivery Details', style: TextStyle(color: Colors.white)),
+            ),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, color: Colors.red, size: 64),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error loading delivery details',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${snapshot.error}',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
+                    child: const Text('Go Back', style: TextStyle(color: Colors.black)),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        if (!snapshot.hasData || snapshot.data == null) {
           return Scaffold(
             backgroundColor: AppColors.black,
             appBar: AppBar(
@@ -197,6 +274,40 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
               title: const Text('Delivery Details', style: TextStyle(color: Colors.white)),
             ),
             body: const Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        // Check if document exists
+        if (!snapshot.data!.exists) {
+          return Scaffold(
+            backgroundColor: AppColors.black,
+            appBar: AppBar(
+              backgroundColor: AppColors.cardDark,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
+              title: const Text('Delivery Details', style: TextStyle(color: Colors.white)),
+            ),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.inbox, color: Colors.white54, size: 64),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Delivery not found',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent),
+                    child: const Text('Go Back', style: TextStyle(color: Colors.black)),
+                  ),
+                ],
+              ),
+            ),
           );
         }
 
@@ -263,7 +374,7 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
     final center = bounds.center;
 
     return Container(
-      height: 350,
+      height: 250, // Reduced from 350 to show more content
       decoration: BoxDecoration(
         color: AppColors.cardDark,
         border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.1))),
@@ -1066,78 +1177,180 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
         ),
       );
     }
-    // For accepted deliveries - show "Reached Pickup Point" button
+    // For accepted deliveries - show "Reached Pickup Point" button AND "Abort Delivery" button
     else if (widget.delivery.status == DeliveryStatus.accepted) {
-      return SizedBox(
-        width: double.infinity,
-        height: 56,
-        child: ElevatedButton(
-          onPressed: _isLoading ? null : () => _updateStatus(context, DeliveryStatus.pickedUp),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.orange,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            elevation: 8,
-            shadowColor: Colors.orange.withOpacity(0.5),
-          ),
-          child: _isLoading
-              ? const SizedBox(
-                  height: 24,
-                  width: 24,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                )
-              : const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.store, color: Colors.white),
-                    SizedBox(width: 12),
-                    Text(
-                      'Reached Pickup Point',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+      return Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : () => _updateStatus(context, DeliveryStatus.pickedUp),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 8,
+                shadowColor: Colors.orange.withOpacity(0.5),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.store, color: Colors.white),
+                        SizedBox(width: 12),
+                        Text(
+                          'Reached Pickup Point',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: OutlinedButton.icon(
+              onPressed: _isLoading ? null : _abortDelivery,
+              icon: const Icon(Icons.cancel, size: 24),
+              label: const Text(
+                'ABORT DELIVERY',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
                 ),
-        ),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: const BorderSide(color: Colors.red, width: 2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+        ],
       );
     }
     // For picked up deliveries - show "Start Journey" button
     else if (widget.delivery.status == DeliveryStatus.pickedUp) {
-      return SizedBox(
-        width: double.infinity,
-        height: 56,
-        child: ElevatedButton(
-          onPressed: _isLoading ? null : () => _updateStatus(context, DeliveryStatus.inTransit),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.purple,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            elevation: 8,
-            shadowColor: Colors.purple.withOpacity(0.5),
-          ),
-          child: _isLoading
-              ? const SizedBox(
-                  height: 24,
-                  width: 24,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                )
-              : const Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.directions_bike, color: Colors.white),
-                    SizedBox(width: 12),
-                    Text(
-                      'Start Journey',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+      return Column(
+        children: [
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton(
+              onPressed: _isLoading ? null : () => _updateStatus(context, DeliveryStatus.inTransit),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.purple,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 8,
+                shadowColor: Colors.purple.withOpacity(0.5),
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : const Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.directions_bike, color: Colors.white),
+                        SizedBox(width: 12),
+                        Text(
+                          'Start Journey',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Google Maps Navigation Button with Recommended Tag
+          Stack(
+            children: [
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: _isLoading ? null : () => _openGoogleMapsNavigation(
+                    widget.delivery.pickupLocation.latitude,
+                    widget.delivery.pickupLocation.longitude,
+                    widget.delivery.deliveryLocation.latitude,
+                    widget.delivery.deliveryLocation.longitude,
+                    widget.delivery.deliveryLocation.address,
+                  ),
+                  icon: const Icon(Icons.map, size: 22),
+                  label: const Text(
+                    'See Route in Google Maps',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.accent,
+                    side: BorderSide(color: AppColors.accent, width: 2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
                 ),
-        ),
+              ),
+              // Recommended Tag
+              Positioned(
+                top: -8,
+                right: 12,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [AppColors.accent, AppColors.accent.withOpacity(0.8)],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.accent.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.star, color: Colors.black, size: 12),
+                      SizedBox(width: 3),
+                      Text(
+                        'RECOMMENDED',
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
       );
     }
     // For in transit deliveries - show "Delivered" button
@@ -1231,6 +1444,186 @@ class _DeliveryDetailsScreenState extends State<DeliveryDetailsScreen> {
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _abortDelivery() async {
+    // Show reason selection dialog
+    String? reason = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        title: const Text('Abort Delivery', style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Please select a reason for aborting this delivery:',
+              style: TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            _buildReasonOption(context, 'Vehicle breakdown'),
+            _buildReasonOption(context, 'Emergency'),
+            _buildReasonOption(context, 'Wrong package'),
+            _buildReasonOption(context, 'Safety concerns'),
+            _buildReasonOption(context, 'Other'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (reason == null) return;
+
+    // If "Other" is selected, show text input
+    if (reason == 'Other') {
+      TextEditingController reasonController = TextEditingController();
+      String? customReason = await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppColors.cardDark,
+          title: const Text('Specify Reason', style: TextStyle(color: Colors.white)),
+          content: TextField(
+            controller: reasonController,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Enter reason...',
+              hintStyle: TextStyle(color: Colors.grey[600]),
+              filled: true,
+              fillColor: AppColors.black,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: BorderSide.none,
+              ),
+            ),
+            maxLines: 3,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, reasonController.text),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+              ),
+              child: const Text('Submit'),
+            ),
+          ],
+        ),
+      );
+
+      if (customReason == null || customReason.trim().isEmpty) return;
+      reason = customReason;
+    }
+
+    // Confirm abort
+    bool? confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardDark,
+        title: const Text('Confirm Abort', style: TextStyle(color: Colors.white)),
+        content: Text(
+          'Are you sure you want to abort this delivery?\n\nReason: $reason\n\nNote: You will not receive payment for this delivery.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('No, Go Back'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('Yes, Abort'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      setState(() => _isLoading = true);
+      
+      try {
+        await DeliveryService.abortDelivery(widget.delivery.id, reason);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Delivery aborted. Business has been notified and refunded.'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          
+          Navigator.pop(context);
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Widget _buildReasonOption(BuildContext context, String reason) {
+    return InkWell(
+      onTap: () => Navigator.pop(context, reason),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        margin: const EdgeInsets.only(bottom: 8),
+        decoration: BoxDecoration(
+          color: AppColors.black,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.grey[800]!),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              _getReasonIcon(reason),
+              color: Colors.white70,
+              size: 20,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              reason,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _getReasonIcon(String reason) {
+    switch (reason) {
+      case 'Vehicle breakdown':
+        return Icons.build;
+      case 'Emergency':
+        return Icons.emergency;
+      case 'Wrong package':
+        return Icons.inventory_2;
+      case 'Safety concerns':
+        return Icons.warning;
+      case 'Other':
+        return Icons.more_horiz;
+      default:
+        return Icons.info;
     }
   }
 

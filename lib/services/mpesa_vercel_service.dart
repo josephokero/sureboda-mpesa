@@ -103,6 +103,81 @@ class MpesaVercelService {
     return (totalFee / 10).ceil() * 10.0;
   }
 
+  /// Initiate B2C Withdrawal (Send money to rider's M-Pesa)
+  /// 
+  /// This sends money from business wallet to customer's M-Pesa account.
+  /// Used for rider withdrawals.
+  /// 
+  /// Returns:
+  /// - success: bool
+  /// - message: String
+  /// - conversationId: String
+  /// - originatorConversationId: String
+  Future<Map<String, dynamic>> initiateB2CWithdrawal({
+    required String phoneNumber,
+    required double amount,
+    String remarks = 'Withdrawal from SUREBODA',
+  }) async {
+    try {
+      debugPrint('💸 Initiating B2C Withdrawal via Vercel...');
+      debugPrint('Endpoint: $vercelBaseUrl/api/mpesa_b2c_withdrawal');
+      debugPrint('Phone: $phoneNumber, Amount: KSH $amount');
+      
+      final response = await http.post(
+        Uri.parse('$vercelBaseUrl/api/mpesa_b2c_withdrawal'),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'phoneNumber': phoneNumber,
+          'amount': amount,
+          'remarks': remarks,
+        }),
+      );
+
+      debugPrint('Response status: ${response.statusCode}');
+      debugPrint('Response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        
+        if (data['success'] == true) {
+          debugPrint('✅ B2C Withdrawal initiated successfully');
+          debugPrint('Conversation ID: ${data['conversationId']}');
+          
+          return {
+            'success': true,
+            'message': data['message'] ?? 'Withdrawal initiated successfully',
+            'conversationId': data['conversationId'],
+            'originatorConversationId': data['originatorConversationId'],
+            'responseCode': data['responseCode'],
+            'responseDescription': data['responseDescription'],
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'B2C withdrawal failed',
+          };
+        }
+      } else {
+        final errorData = json.decode(response.body);
+        debugPrint('❌ B2C Withdrawal failed: ${errorData['message']}');
+        
+        return {
+          'success': false,
+          'message': errorData['message'] ?? 'B2C withdrawal failed',
+        };
+      }
+    } catch (e) {
+      debugPrint('❌ Error initiating B2C withdrawal: $e');
+      
+      return {
+        'success': false,
+        'message': 'Failed to initiate withdrawal: ${e.toString()}',
+      };
+    }
+  }
+
   /// Test Vercel endpoint connectivity
   Future<bool> testConnection() async {
     try {

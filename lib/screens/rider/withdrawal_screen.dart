@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/user_model.dart';
 import '../../utils/theme.dart';
-import '../../services/mpesa_service.dart';
+import '../../services/mpesa_vercel_service.dart';
 
 class WithdrawalScreen extends StatefulWidget {
   final UserModel user;
@@ -17,8 +17,10 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _phoneController = TextEditingController();
-  final MpesaService _mpesaService = MpesaService();
+  final MpesaVercelService _mpesaService = MpesaVercelService();
   bool _isLoading = false;
+  bool _isProcessing = false;
+  String? _conversationId;
 
   @override
   void initState() {
@@ -64,15 +66,79 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
     });
 
     try {
-      // Process M-Pesa withdrawal
-      final result = await _mpesaService.initiateB2CPayment(
-        _phoneController.text,
-        amount,
-        'Withdrawal from SUREBODA wallet',
+      // Initiate M-Pesa B2C Withdrawal
+      final result = await _mpesaService.initiateB2CWithdrawal(
+        phoneNumber: _phoneController.text,
+        amount: amount,
+        remarks: 'SUREBODA Rider Withdrawal',
       );
 
       if (result['success'] == true) {
-        // Update user wallet balance
+        setState(() {
+          _conversationId = result['conversationId'];
+          _isProcessing = true;
+        });
+
+        // Show processing dialog
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (BuildContext dialogContext) {
+              return AlertDialog(
+                backgroundColor: AppColors.cardDark,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(color: AppColors.accent),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Processing withdrawal...',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Money is being sent to ${_phoneController.text}',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 14,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'KSH ${amount.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        color: AppColors.accent,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(dialogContext);
+                        Navigator.pop(context);
+                      },
+                      child: const Text(
+                        'Close',
+                        style: TextStyle(color: Colors.white54),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        }
+
+        // Update wallet balance immediately (optimistic update)
         await FirebaseFirestore.instance
             .collection('users')
             .doc(widget.user.uid)
@@ -83,23 +149,32 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
         // Create transaction record
         await FirebaseFirestore.instance.collection('transactions').add({
           'userId': widget.user.uid,
+          'userType': 'rider',
           'type': 'withdrawal',
           'amount': amount,
           'phone': _phoneController.text,
-          'status': 'completed',
-          'mpesaReceiptNumber': result['transactionId'],
-          'description': 'Wallet withdrawal',
+          'status': 'processing',
+          'conversationId': result['conversationId'],
+          'originatorConversationId': result['originatorConversationId'],
+          'description': 'Wallet withdrawal to M-Pesa',
           'createdAt': Timestamp.now(),
         });
 
+        // Wait a bit then show success message
+        await Future.delayed(const Duration(seconds: 3));
+
         if (mounted) {
+          Navigator.pop(context); // Close processing dialog
+          
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Withdrawal successful! Check your M-Pesa for confirmation.'),
+              content: Text('✅ Withdrawal initiated! Check your M-Pesa for confirmation.'),
               backgroundColor: Colors.green,
+              duration: Duration(seconds: 5),
             ),
           );
-          Navigator.pop(context);
+          
+          Navigator.pop(context); // Close withdrawal screen
         }
       } else {
         throw Exception(result['message'] ?? 'Withdrawal failed');
@@ -114,9 +189,12 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
         );
       }
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isProcessing = false;
+        });
+      }
     }
   }
 

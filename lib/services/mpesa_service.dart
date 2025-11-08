@@ -153,33 +153,14 @@ class MpesaService {
   }
 
   // B2C Payment (Business to Customer - for withdrawals)
-  // NOTE: B2C requires additional configuration with Safaricom
-  // For now, this returns a mock success for testing
   Future<Map<String, dynamic>> initiateB2CPayment(
     String phoneNumber,
     double amount,
     String remarks,
   ) async {
     try {
-      // IMPORTANT: B2C requires:
-      // 1. Initiator Name (your API operator username)
-      // 2. Security Credential (encrypted password)
-      // 3. Approval from Safaricom
-      // 4. Production environment only
+      debugPrint('🔄 Initiating B2C Payment: $phoneNumber, KSH $amount');
       
-      // For testing purposes, return mock success
-      debugPrint('B2C Payment initiated: $phoneNumber, KSH $amount');
-      
-      // In production, uncomment and configure this:
-      /*
-      String? accessToken = await getAccessToken();
-      if (accessToken == null) {
-        return {
-          'success': false,
-          'message': 'Failed to get access token',
-        };
-      }
-
       // Format phone number
       String formattedPhone = phoneNumber;
       if (formattedPhone.startsWith('0')) {
@@ -189,64 +170,59 @@ class MpesaService {
         formattedPhone = '254$formattedPhone';
       }
 
-      // Format phone number
-      String formattedPhone = phoneNumber;
-      if (formattedPhone.startsWith('0')) {
-        formattedPhone = '254${formattedPhone.substring(1)}';
-      }
-      if (!formattedPhone.startsWith('254')) {
-        formattedPhone = '254$formattedPhone';
-      }
-
+      // Use Firebase Cloud Function for B2C (bypasses CORS and secures credentials)
+      final cloudFunctionUrl = 'https://us-central1-astute-empire.cloudfunctions.net/initiateB2CPayment';
+      
+      debugPrint('📡 Calling Cloud Function: $cloudFunctionUrl');
+      
       final response = await http.post(
-        Uri.parse('$baseUrl/mpesa/b2c/v1/paymentrequest'),
+        Uri.parse(cloudFunctionUrl),
         headers: {
-          'Authorization': 'Bearer $accessToken',
           'Content-Type': 'application/json',
         },
         body: json.encode({
-          'InitiatorName': 'YOUR_INITIATOR_NAME',
-          'SecurityCredential': 'YOUR_SECURITY_CREDENTIAL',
-          'CommandID': 'BusinessPayment',
-          'Amount': amount.toInt(),
-          'PartyA': shortCode,
-          'PartyB': formattedPhone,
-          'Remarks': remarks,
-          'QueueTimeOutURL': callbackUrl,
-          'ResultURL': callbackUrl,
-          'Occasion': 'Withdrawal',
+          'phoneNumber': formattedPhone,
+          'amount': amount.toInt(),
+          'remarks': remarks,
         }),
       );
 
+      debugPrint('📥 Response Status: ${response.statusCode}');
+      debugPrint('📥 Response Body: ${response.body}');
+
       if (response.statusCode == 200) {
         var data = json.decode(response.body);
-        return {
-          'success': true,
-          'message': 'Withdrawal processed successfully',
-          'transactionId': data['ConversationID'],
-        };
+        
+        if (data['success'] == true) {
+          return {
+            'success': true,
+            'message': data['message'] ?? 'Withdrawal processed successfully',
+            'transactionId': data['transactionId'] ?? data['ConversationID'],
+            'originatorConversationID': data['OriginatorConversationID'],
+            'conversationID': data['ConversationID'],
+            'responseCode': data['ResponseCode'],
+          };
+        } else {
+          return {
+            'success': false,
+            'message': data['message'] ?? 'Withdrawal failed',
+            'error': data['error'],
+          };
+        }
       } else {
-        debugPrint('B2C Payment failed: ${response.body}');
+        var errorData = json.decode(response.body);
+        debugPrint('❌ B2C Payment failed: ${response.body}');
         return {
           'success': false,
-          'message': 'B2C payment failed',
+          'message': errorData['message'] ?? errorData['error'] ?? 'B2C payment failed',
+          'errorCode': errorData['errorCode'],
         };
       }
-      */
-      
-      // Mock success response for testing
-      await Future.delayed(const Duration(seconds: 2)); // Simulate API delay
-      
-      return {
-        'success': true,
-        'message': 'Withdrawal processed successfully',
-        'transactionId': 'TXN${DateTime.now().millisecondsSinceEpoch}',
-      };
     } catch (e) {
-      debugPrint('Error initiating B2C payment: $e');
+      debugPrint('❌ Error initiating B2C payment: $e');
       return {
         'success': false,
-        'message': 'Error: ${e.toString()}',
+        'message': 'Network error: ${e.toString()}',
       };
     }
   }

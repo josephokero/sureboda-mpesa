@@ -170,6 +170,42 @@ class DeliveryService {
     }
   }
 
+  // Rider aborts delivery
+  static Future<void> abortDelivery(String deliveryId, String reason) async {
+    try {
+      var deliveryDoc = await _firestore.collection('deliveries').doc(deliveryId).get();
+      var delivery = DeliveryModel.fromFirestore(deliveryDoc);
+
+      // Update delivery status to cancelled with reason
+      await _firestore.collection('deliveries').doc(deliveryId).update({
+        'status': 'cancelled',
+        'cancelReason': reason,
+        'cancelledAt': FieldValue.serverTimestamp(),
+        'paymentStatus': 'cancelled',
+      });
+
+      // Note: Money return is handled by Cloud Function
+      // The Cloud Function will:
+      // 1. Release pendingBalance back to business
+      // 2. NOT add money to rider wallet
+      // 3. Update transaction status to 'refunded'
+
+      // Notify business about cancellation
+      await _firestore.collection('notifications').add({
+        'type': 'delivery_cancelled',
+        'deliveryId': deliveryId,
+        'userId': delivery.businessId,
+        'riderName': delivery.riderName,
+        'cancelReason': reason,
+        'message': '${delivery.riderName} cancelled your delivery. Reason: $reason. Your payment has been refunded.',
+        'createdAt': FieldValue.serverTimestamp(),
+        'isRead': false,
+      });
+    } catch (e) {
+      throw Exception('Failed to abort delivery: $e');
+    }
+  }
+
   // Update rider location in real-time
   static Future<void> updateRiderLocation(String deliveryId, double lat, double lng) async {
     try {
